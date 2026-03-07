@@ -1,42 +1,323 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+.page-shell {
+  position: relative;
+  min-height: 100svh;
+  padding: 1rem;
+  overflow: hidden;
+  display: grid;
+  align-items: center;
+}
+
+.bg-layer {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  filter: blur(4px);
+}
+
+.bg-layer-one {
+  background:
+    radial-gradient(circle at 10% 20%, #ff7a59 0%, transparent 48%),
+    radial-gradient(circle at 90% 10%, #3bc9b5 0%, transparent 46%),
+    radial-gradient(circle at 60% 80%, #ffd369 0%, transparent 50%);
+  opacity: 0.36;
+  animation: driftA 14s ease-in-out infinite;
+}
+
+.bg-layer-two {
+  background:
+    radial-gradient(circle at 80% 60%, #f45b8f 0%, transparent 35%),
+    radial-gradient(circle at 20% 80%, #3a86ff 0%, transparent 35%);
+  opacity: 0.22;
+  animation: driftB 18s ease-in-out infinite;
+}
+
+.landing-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 34rem);
+  margin-inline: auto;
+  border-radius: 1.5rem;
+  padding: 1.1rem;
+  background: linear-gradient(160deg, #121923 0%, #1a2332 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+  display: grid;
+  gap: 0.95rem;
+  animation: cardEnter 520ms cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+.hero-block {
+  text-align: left;
+}
+
+.eyebrow {
+  margin: 0;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 0.2rem 0 0;
+  line-height: 0.92;
+}
+
+h1 span {
+  font-family: "Bebas Neue", "Oswald", sans-serif;
+  font-size: clamp(2.8rem, 16vw, 5.5rem);
+  letter-spacing: 0.03em;
+  background: linear-gradient(90deg, #ffca5c 0%, #ff7a59 45%, #52d3bf 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.subhead {
+  margin: 0.45rem 0 0;
+  color: #d7dde8;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  max-width: 40ch;
+}
+
+.mode-switch {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.35rem;
+  border-radius: 999px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.switch-btn {
+  border: 0;
+  border-radius: 999px;
+  min-height: 2.6rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #d0d7e5;
+  background: transparent;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.switch-btn.active {
+  background: linear-gradient(90deg, #ffb55f, #ff7a59);
+  color: #1a1111;
+}
+
+.switch-btn:active {
+  transform: scale(0.985);
+}
+
+.panel-wrap {
+  border-radius: 1.05rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 12, 19, 0.66);
+  padding: 0.95rem;
+}
+
+.mode-panel {
+  display: grid;
+  gap: 0.62rem;
+}
+
+label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.86rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 1rem;
+  min-height: 2.9rem;
+  padding: 0.65rem 0.82rem;
+  transition:
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+
+input::placeholder {
+  color: #90a0b7;
+}
+
+input:focus-visible {
+  outline: none;
+  border-color: #52d3bf;
+  background: rgba(82, 211, 191, 0.08);
+}
+
+.code-preview {
+  border-radius: 0.9rem;
+  border: 1px dashed rgba(255, 202, 92, 0.55);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 202, 92, 0.15),
+    rgba(255, 122, 89, 0.12)
+  );
+  padding: 0.75rem 0.85rem;
+}
+
+.code-preview p {
+  margin: 0;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #f4dab3;
+}
+
+.code-preview strong {
+  margin-top: 0.15rem;
+  display: block;
+  font-size: clamp(1.55rem, 9vw, 2rem);
+  letter-spacing: 0.22em;
+  color: #fff5df;
+}
+
+.cta-btn {
+  margin-top: 0.15rem;
+  min-height: 2.95rem;
+  border: 0;
+  border-radius: 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #121823;
+  background: linear-gradient(96deg, #52d3bf 0%, #73e8d5 30%, #ffca5c 100%);
+  box-shadow: 0 10px 22px rgba(82, 211, 191, 0.34);
+  transition:
+    transform 180ms ease,
+    filter 180ms ease;
+}
+
+.cta-btn:hover {
+  filter: brightness(1.03);
+}
+
+.cta-btn:active {
+  transform: translateY(1px) scale(0.993);
+}
+
+.tiny-note {
+  font-size: 0.74rem;
+  color: #9dacbf;
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.stagger-1,
+.stagger-2,
+.stagger-3,
+.stagger-4 {
+  opacity: 0;
+  animation: riseIn 500ms cubic-bezier(0.2, 1, 0.3, 1) forwards;
 }
 
-@keyframes logo-spin {
+.stagger-2 {
+  animation-delay: 80ms;
+}
+
+.stagger-3 {
+  animation-delay: 160ms;
+}
+
+.stagger-4 {
+  animation-delay: 240ms;
+}
+
+@keyframes cardEnter {
   from {
-    transform: rotate(0deg);
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
   }
+
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.card {
-  padding: 2em;
+@keyframes driftA {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(-1.5%, 1%, 0);
+  }
 }
 
-.read-the-docs {
-  color: #888;
+@keyframes driftB {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(1.2%, -1%, 0);
+  }
+}
+
+@media (min-width: 760px) {
+  .page-shell {
+    padding: 2rem;
+  }
+
+  .landing-card {
+    width: min(100%, 44rem);
+    border-radius: 1.8rem;
+    padding: 1.5rem;
+  }
+
+  .panel-wrap {
+    padding: 1.2rem;
+  }
+
+  .mode-panel {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 0.75rem;
+    row-gap: 0.7rem;
+    align-items: end;
+  }
+
+  .mode-panel label,
+  .mode-panel input,
+  .mode-panel .code-preview,
+  .mode-panel .cta-btn {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-card,
+  .stagger-1,
+  .stagger-2,
+  .stagger-3,
+  .stagger-4,
+  .bg-layer-one,
+  .bg-layer-two {
+    animation: none;
+  }
 }
