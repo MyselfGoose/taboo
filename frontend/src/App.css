@@ -272,6 +272,39 @@ select:focus-visible {
   color: #d4deed;
 }
 
+.identity-strip {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.9rem;
+  background: rgba(59, 130, 246, 0.14);
+  padding: 0.6rem 0.85rem;
+}
+
+.identity-strip p {
+  margin: 0;
+  color: #d6e8ff;
+  font-size: 0.82rem;
+}
+
+.identity-strip strong {
+  color: #fff7e8;
+}
+
+.ready-banner {
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 202, 92, 0.18);
+  color: #fff1d4;
+  font-size: 0.85rem;
+  padding: 0.7rem 0.85rem;
+}
+
+.lobby-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
 .connection-pill {
   display: inline-block;
   width: fit-content;
@@ -323,6 +356,44 @@ select:focus-visible {
   padding-left: 1rem;
   color: #bbcadf;
   font-size: 0.92rem;
+}
+
+.team-card li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.current-player {
+  border-left: 3px solid #52d3bf;
+  padding-left: 0.45rem;
+}
+
+.ready-tag {
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.ready-tag.ready {
+  background: rgba(82, 211, 191, 0.24);
+  color: #cefff6;
+}
+
+.ready-tag.waiting {
+  background: rgba(255, 99, 132, 0.22);
+  color: #ffd5e0;
+}
+
+.you-tag {
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(255, 202, 92, 0.28);
+  color: #fff1c7;
 }
 
 .team-card li + li {
@@ -435,6 +506,10 @@ select:focus-visible {
   }
 
   .teams-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lobby-actions {
     grid-template-columns: 1fr 1fr;
   }
 }

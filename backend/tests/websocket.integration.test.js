@@ -114,6 +114,46 @@ test("websocket broadcasts lobby member updates in real time", async () => {
 
   assert.equal(joinedState.lobby.memberCount, 2);
 
+  bobSocket.send(JSON.stringify({ type: "change_team", team: "A" }));
+
+  const teamChangedState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.reason === "team_changed" &&
+      msg.lobby &&
+      msg.lobby.players.some(
+        (player) => player.name === "Bob" && player.team === "A",
+      ),
+  );
+
+  assert.equal(
+    teamChangedState.lobby.players.some(
+      (player) => player.name === "Bob" && player.team === "A",
+    ),
+    true,
+  );
+
+  bobSocket.send(JSON.stringify({ type: "set_ready", ready: true }));
+
+  const readyChangedState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.reason === "ready_changed" &&
+      msg.lobby &&
+      msg.lobby.players.some(
+        (player) => player.name === "Bob" && player.ready === true,
+      ),
+  );
+
+  assert.equal(
+    readyChangedState.lobby.players.some(
+      (player) => player.name === "Bob" && player.ready === true,
+    ),
+    true,
+  );
+
   bobSocket.close();
 
   const leftState = await waitForMessage(

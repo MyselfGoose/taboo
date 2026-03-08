@@ -10,9 +10,11 @@ describe("App lobby flow", () => {
 
     class MockWebSocket {
       static instances = [];
+      static OPEN = 1;
 
       constructor() {
         this.listeners = new Map();
+        this.readyState = MockWebSocket.OPEN;
         MockWebSocket.instances.push(this);
         setTimeout(() => {
           this.dispatch("open");
@@ -83,6 +85,9 @@ describe("App lobby flow", () => {
         lobby: {
           code: "AB12",
           members: ["Alice"],
+          players: [{ name: "Alice", team: "A", ready: false }],
+          teams: { A: ["Alice"], B: [] },
+          allReady: false,
           memberCount: 1,
           settings: { roundCount: 5, roundDurationSeconds: 60 },
         },

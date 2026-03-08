@@ -104,56 +104,90 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
         return;
       }
 
-      if (message.type !== "subscribe") {
+      try {
+        if (message.type === "subscribe") {
+          const code = normalizeLobbyCode(message.code);
+          const name = normalizePlayerName(message.name);
+
+          const lobby = lobbyService.joinLobby({
+            playerName: name,
+            lobbyCode: code,
+            requestId,
+          });
+
+          let lobbySockets = socketsByLobby.get(code);
+          if (!lobbySockets) {
+            lobbySockets = new Set();
+            socketsByLobby.set(code, lobbySockets);
+          }
+
+          const previousCtx = socketContext.get(socket);
+          if (previousCtx && previousCtx.code && previousCtx.name) {
+            removeSocketFromLobby(socket, "member_moved");
+          }
+
+          lobbySockets.add(socket);
+          socketContext.set(socket, { code, name, requestId });
+
+          const memberKey = keyForMember(code, name);
+          memberConnectionCount.set(
+            memberKey,
+            (memberConnectionCount.get(memberKey) || 0) + 1,
+          );
+
+          safeSend(socket, {
+            type: "subscribed",
+            lobby: lobbyService.toLobbySnapshot(lobby),
+          });
+
+          broadcastLobbyState(code, "member_joined");
+          return;
+        }
+
+        const ctx = socketContext.get(socket);
+        if (!ctx?.code || !ctx?.name) {
+          safeSend(socket, {
+            type: "error",
+            code: "NOT_SUBSCRIBED",
+            message: "Subscribe to a lobby before sending actions.",
+          });
+          return;
+        }
+
+        if (message.type === "change_team") {
+          const lobby = lobbyService.setPlayerTeam({
+            playerName: ctx.name,
+            lobbyCode: ctx.code,
+            team: message.team,
+            requestId: ctx.requestId,
+          });
+
+          broadcastLobbyState(lobby.code, "team_changed");
+          return;
+        }
+
+        if (message.type === "set_ready") {
+          const lobby = lobbyService.setPlayerReady({
+            playerName: ctx.name,
+            lobbyCode: ctx.code,
+            ready: message.ready,
+            requestId: ctx.requestId,
+          });
+
+          broadcastLobbyState(lobby.code, "ready_changed");
+          return;
+        }
+
         safeSend(socket, {
           type: "error",
           code: "INVALID_WS_EVENT",
           message: "Unsupported websocket event.",
         });
-        return;
-      }
-
-      try {
-        const code = normalizeLobbyCode(message.code);
-        const name = normalizePlayerName(message.name);
-
-        const lobby = lobbyService.joinLobby({
-          playerName: name,
-          lobbyCode: code,
-          requestId,
-        });
-
-        let lobbySockets = socketsByLobby.get(code);
-        if (!lobbySockets) {
-          lobbySockets = new Set();
-          socketsByLobby.set(code, lobbySockets);
-        }
-
-        const previousCtx = socketContext.get(socket);
-        if (previousCtx && previousCtx.code && previousCtx.name) {
-          removeSocketFromLobby(socket, "member_moved");
-        }
-
-        lobbySockets.add(socket);
-        socketContext.set(socket, { code, name, requestId });
-
-        const memberKey = keyForMember(code, name);
-        memberConnectionCount.set(
-          memberKey,
-          (memberConnectionCount.get(memberKey) || 0) + 1,
-        );
-
-        safeSend(socket, {
-          type: "subscribed",
-          lobby: lobbyService.toLobbySnapshot(lobby),
-        });
-
-        broadcastLobbyState(code, "member_joined");
       } catch (error) {
         safeSend(socket, {
           type: "error",
-          code: error.code || "WS_SUBSCRIBE_FAILED",
-          message: error.message || "Could not subscribe to lobby.",
+          code: error.code || "WS_ACTION_FAILED",
+          message: error.message || "Could not process websocket action.",
         });
       }
     });

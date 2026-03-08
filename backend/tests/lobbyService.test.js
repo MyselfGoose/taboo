@@ -33,7 +33,10 @@ test("createLobby creates lobby with unique code and host member", () => {
   const lobby = service.createLobby({ playerName: "Alice", requestId: "r1" });
 
   assert.equal(lobby.code.length, 4);
-  assert.deepEqual(lobby.members, ["Alice"]);
+  assert.equal(lobby.players.length, 1);
+  assert.equal(lobby.players[0].name, "Alice");
+  assert.equal(lobby.players[0].team, "A");
+  assert.equal(lobby.players[0].ready, false);
   assert.equal(lobby.hostName, "Alice");
   assert.equal(lobby.settings.roundCount, 5);
   assert.equal(lobby.settings.roundDurationSeconds, 60);
@@ -96,7 +99,10 @@ test("joinLobby adds member to existing lobby", () => {
     requestId: "r2",
   });
 
-  assert.deepEqual(joined.members, ["Alice", "Bob"]);
+  assert.deepEqual(
+    joined.players.map((player) => player.name),
+    ["Alice", "Bob"],
+  );
 });
 
 test("joinLobby is idempotent for same member name ignoring case", () => {
@@ -114,7 +120,10 @@ test("joinLobby is idempotent for same member name ignoring case", () => {
     requestId: "r3",
   });
 
-  assert.deepEqual(joinedAgain.members, ["Alice", "bob"]);
+  assert.deepEqual(
+    joinedAgain.players.map((player) => player.name),
+    ["Alice", "bob"],
+  );
 });
 
 test("joinLobby throws when lobby code is unknown", () => {
@@ -146,5 +155,43 @@ test("removeLobbyMember removes matching member from lobby", () => {
     requestId: "r3",
   });
 
-  assert.deepEqual(updated.members, ["Alice"]);
+  assert.deepEqual(
+    updated.players.map((player) => player.name),
+    ["Alice"],
+  );
+});
+
+test("setPlayerTeam moves player between teams", () => {
+  const service = createService();
+  const lobby = service.createLobby({ playerName: "Alice", requestId: "r1" });
+  service.joinLobby({
+    playerName: "Bob",
+    lobbyCode: lobby.code,
+    requestId: "r2",
+  });
+
+  const updated = service.setPlayerTeam({
+    playerName: "Bob",
+    lobbyCode: lobby.code,
+    team: "A",
+    requestId: "r3",
+  });
+
+  const bob = updated.players.find((player) => player.name === "Bob");
+  assert.equal(bob.team, "A");
+});
+
+test("setPlayerReady toggles player readiness", () => {
+  const service = createService();
+  const lobby = service.createLobby({ playerName: "Alice", requestId: "r1" });
+
+  const updated = service.setPlayerReady({
+    playerName: "Alice",
+    lobbyCode: lobby.code,
+    ready: true,
+    requestId: "r2",
+  });
+
+  const alice = updated.players.find((player) => player.name === "Alice");
+  assert.equal(alice.ready, true);
 });

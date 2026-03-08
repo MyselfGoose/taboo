@@ -27,6 +27,17 @@ function splitIntoTeams(members) {
   return { teamA, teamB };
 }
 
+function buildTabTag() {
+  const existing = window.sessionStorage.getItem("taboo-tab-tag");
+  if (existing) {
+    return existing;
+  }
+
+  const generated = `TAB-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  window.sessionStorage.setItem("taboo-tab-tag", generated);
+  return generated;
+}
+
 function App() {
   const [screen, setScreen] = useState("landing");
   const [mode, setMode] = useState("create");
@@ -39,16 +50,39 @@ function App() {
   const [connectionState, setConnectionState] = useState("disconnected");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tabTag] = useState(() => buildTabTag());
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
 
   const teams = useMemo(() => {
-    if (!lobbyDetails?.lobby?.members) {
+    if (!lobbyDetails?.lobby) {
       return { teamA: [], teamB: [] };
     }
 
-    return splitIntoTeams(lobbyDetails.lobby.members);
+    if (lobbyDetails.lobby.teams?.A && lobbyDetails.lobby.teams?.B) {
+      return {
+        teamA: lobbyDetails.lobby.teams.A,
+        teamB: lobbyDetails.lobby.teams.B,
+      };
+    }
+
+    return splitIntoTeams(lobbyDetails.lobby.members || []);
   }, [lobbyDetails]);
+
+  const players = useMemo(
+    () => lobbyDetails?.lobby?.players || [],
+    [lobbyDetails],
+  );
+
+  const currentPlayer = useMemo(
+    () =>
+      players.find(
+        (player) =>
+          player.name.toLowerCase() ===
+          String(lobbyDetails?.playerName || "").toLowerCase(),
+      ),
+    [players, lobbyDetails?.playerName],
+  );
 
   const handleCodeInput = (event) => {
     const code = event.target.value
@@ -134,6 +168,27 @@ function App() {
     setScreen("landing");
     setErrorMessage("");
     setConnectionState("disconnected");
+  };
+
+  const sendLobbyAction = (payload) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setErrorMessage(
+        "Realtime connection is not ready. Please wait a moment.",
+      );
+      return;
+    }
+
+    socket.send(JSON.stringify(payload));
+  };
+
+  const handleSwitchTeam = () => {
+    const nextTeam = currentPlayer?.team === "A" ? "B" : "A";
+    sendLobbyAction({ type: "change_team", team: nextTeam });
+  };
+
+  const handleToggleReady = () => {
+    sendLobbyAction({ type: "set_ready", ready: !currentPlayer?.ready });
   };
 
   useEffect(() => {
@@ -256,6 +311,11 @@ function App() {
     roundDurationSeconds,
   };
 
+  const unreadyCount = players.filter((player) => !player.ready).length;
+
+  const getPlayersForTeam = (teamName) =>
+    players.filter((player) => player.team === teamName);
+
   if (screen === "lobby" && lobbyDetails) {
     return (
       <main className="page-shell">
@@ -291,13 +351,66 @@ function App() {
             </p>
           </section>
 
+          <section className="identity-strip" aria-label="Current user context">
+            <p>
+              You are <strong>{lobbyDetails.playerName}</strong>
+            </p>
+            <p>
+              Tab ID: <strong>{tabTag}</strong>
+            </p>
+          </section>
+
+          <section className="ready-banner" aria-live="polite">
+            {lobbyDetails.lobby?.allReady
+              ? "Everyone is ready. Game can start."
+              : `Waiting for ${unreadyCount} player${unreadyCount === 1 ? "" : "s"} to be ready.`}
+          </section>
+
+          <section className="lobby-actions" aria-label="Lobby controls">
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={handleSwitchTeam}
+            >
+              Switch To Team {currentPlayer?.team === "A" ? "B" : "A"}
+            </button>
+            <button
+              type="button"
+              className="cta-btn"
+              onClick={handleToggleReady}
+            >
+              {currentPlayer?.ready ? "I'm Not Ready" : "I'm Ready"}
+            </button>
+          </section>
+
           <section className="teams-grid" aria-label="Teams preview">
             <article className="team-card">
               <h2>Team A</h2>
               <ul>
                 {teams.teamA.length ? (
-                  teams.teamA.map((member) => (
-                    <li key={`a-${member}`}>{member}</li>
+                  getPlayersForTeam("A").map((player) => (
+                    <li
+                      key={`a-${player.name}`}
+                      className={
+                        player.name.toLowerCase() ===
+                        String(lobbyDetails.playerName).toLowerCase()
+                          ? "current-player"
+                          : ""
+                      }
+                    >
+                      <span>{player.name}</span>
+                      <span
+                        className={
+                          player.ready ? "ready-tag ready" : "ready-tag waiting"
+                        }
+                      >
+                        {player.ready ? "Ready" : "Not ready"}
+                      </span>
+                      {player.name.toLowerCase() ===
+                      String(lobbyDetails.playerName).toLowerCase() ? (
+                        <span className="you-tag">You</span>
+                      ) : null}
+                    </li>
                   ))
                 ) : (
                   <li>Waiting for players...</li>
@@ -308,8 +421,29 @@ function App() {
               <h2>Team B</h2>
               <ul>
                 {teams.teamB.length ? (
-                  teams.teamB.map((member) => (
-                    <li key={`b-${member}`}>{member}</li>
+                  getPlayersForTeam("B").map((player) => (
+                    <li
+                      key={`b-${player.name}`}
+                      className={
+                        player.name.toLowerCase() ===
+                        String(lobbyDetails.playerName).toLowerCase()
+                          ? "current-player"
+                          : ""
+                      }
+                    >
+                      <span>{player.name}</span>
+                      <span
+                        className={
+                          player.ready ? "ready-tag ready" : "ready-tag waiting"
+                        }
+                      >
+                        {player.ready ? "Ready" : "Not ready"}
+                      </span>
+                      {player.name.toLowerCase() ===
+                      String(lobbyDetails.playerName).toLowerCase() ? (
+                        <span className="you-tag">You</span>
+                      ) : null}
+                    </li>
                   ))
                 ) : (
                   <li>Waiting for players...</li>
