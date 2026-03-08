@@ -24,6 +24,18 @@ test("GET / returns service metadata", async () => {
   assert.equal(response.body.status, "running");
 });
 
+test("GET /api/categories returns dataset-backed category metadata", async () => {
+  const app = createApp();
+
+  const response = await request(app).get("/api/categories");
+
+  assert.equal(response.status, 200);
+  assert.equal(Array.isArray(response.body.categories), true);
+  assert.equal(response.body.categories.length > 0, true);
+  assert.equal(typeof response.body.categories[0].categoryId, "number");
+  assert.equal(typeof response.body.categories[0].category, "string");
+});
+
 test("POST /api/lobbies creates lobby and returns code payload", async () => {
   const app = createApp();
 

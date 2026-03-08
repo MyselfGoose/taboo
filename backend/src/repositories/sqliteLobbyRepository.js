@@ -9,6 +9,7 @@ class SqliteLobbyRepository {
     this.getByCodeStmt = db.prepare(
       `SELECT data_json AS dataJson FROM lobbies WHERE code = ? LIMIT 1`,
     );
+    this.listAllStmt = db.prepare(`SELECT data_json AS dataJson FROM lobbies`);
     this.upsertStmt = db.prepare(`
       INSERT INTO lobbies (code, data_json, created_at, updated_at)
       VALUES (@code, @dataJson, @createdAt, @updatedAt)
@@ -51,6 +52,10 @@ class SqliteLobbyRepository {
     }
 
     return JSON.parse(row.dataJson);
+  }
+
+  listAll() {
+    return this.listAllStmt.all().map((row) => JSON.parse(row.dataJson));
   }
 
   deleteByCode(code) {

@@ -29,13 +29,25 @@ function toErrorMessage(status, payload, fallback) {
   return `${message} (HTTP ${status})`;
 }
 
-export async function createLobby({ name, roundCount, roundDurationSeconds }) {
+export async function createLobby({
+  name,
+  roundCount,
+  roundDurationSeconds,
+  categoryMode,
+  categoryIds,
+}) {
   const response = await fetch(`${API_BASE_URL}/api/lobbies`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ name, roundCount, roundDurationSeconds }),
+    body: JSON.stringify({
+      name,
+      roundCount,
+      roundDurationSeconds,
+      categoryMode,
+      categoryIds,
+    }),
   });
 
   const payload = await parseApiResponse(response);
@@ -51,6 +63,23 @@ export async function createLobby({ name, roundCount, roundDurationSeconds }) {
   }
 
   return payload;
+}
+
+export async function getCategories() {
+  const response = await fetch(`${API_BASE_URL}/api/categories`);
+  const payload = await parseApiResponse(response);
+
+  if (!response.ok) {
+    throw new Error(
+      toErrorMessage(response.status, payload, "Could not fetch categories"),
+    );
+  }
+
+  if (!payload || !Array.isArray(payload.categories)) {
+    throw new Error("Categories response is missing required data");
+  }
+
+  return payload.categories;
 }
 
 export async function joinLobby(name, code) {

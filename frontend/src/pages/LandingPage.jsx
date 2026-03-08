@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { createLobby, joinLobby } from "../api/lobbyApi";
+import { createLobby, getCategories, joinLobby } from "../api/lobbyApi";
 import { ROUND_DURATION_OPTIONS } from "../constants/gameConfig";
 import { useLobby } from "../hooks/useLobby";
 
@@ -21,6 +21,10 @@ export default function LandingPage() {
   const [joinCode, setJoinCode] = useState("");
   const [roundCount, setRoundCount] = useState(5);
   const [roundDurationSeconds, setRoundDurationSeconds] = useState(60);
+  const [categoryMode, setCategoryMode] = useState("single");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState("");
 
@@ -32,6 +36,48 @@ export default function LandingPage() {
       })),
     [],
   );
+
+  const selectableCategories = useMemo(
+    () => categories.filter((category) => category.selectable !== false),
+    [categories],
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCategories = async () => {
+      setCategoriesLoading(true);
+      try {
+        const nextCategories = await getCategories();
+        if (!active) {
+          return;
+        }
+
+        setCategories(nextCategories);
+        const firstSelectable = nextCategories.find(
+          (category) => category.selectable !== false,
+        );
+        if (firstSelectable) {
+          setSelectedCategoryId(String(firstSelectable.categoryId));
+        }
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        setLocalError(error.message || "Unable to load categories.");
+      } finally {
+        if (active) {
+          setCategoriesLoading(false);
+        }
+      }
+    };
+
+    loadCategories();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -49,6 +95,11 @@ export default function LandingPage() {
         name: submittedName,
         roundCount,
         roundDurationSeconds,
+        categoryMode,
+        categoryIds:
+          categoryMode === "all"
+            ? selectableCategories.map((category) => category.categoryId)
+            : [Number(selectedCategoryId)],
       });
 
       setLobbySession({
@@ -231,12 +282,67 @@ export default function LandingPage() {
                 </div>
               </div>
 
+              <div className="grid gap-2 rounded-xl border border-white/15 bg-slate-900/50 p-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">
+                  Category scope
+                </p>
+                <div className="flex flex-wrap gap-2 text-sm">
+                  <label className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-1.5">
+                    <input
+                      type="radio"
+                      name="category-mode"
+                      value="single"
+                      checked={categoryMode === "single"}
+                      onChange={() => setCategoryMode("single")}
+                    />
+                    Single category
+                  </label>
+                  <label className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-1.5">
+                    <input
+                      type="radio"
+                      name="category-mode"
+                      value="all"
+                      checked={categoryMode === "all"}
+                      onChange={() => setCategoryMode("all")}
+                    />
+                    All categories
+                  </label>
+                </div>
+                <select
+                  id="category"
+                  disabled={categoryMode === "all" || categoriesLoading}
+                  value={selectedCategoryId}
+                  onChange={(event) =>
+                    setSelectedCategoryId(event.target.value)
+                  }
+                  className="h-11 rounded-xl border border-white/20 bg-slate-800/80 px-3 text-base text-white outline-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                  required={categoryMode === "single"}
+                >
+                  {selectableCategories.map((category) => (
+                    <option
+                      key={category.categoryId}
+                      value={category.categoryId}
+                    >
+                      {category.category} ({category.wordCount})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting ||
+                  categoriesLoading ||
+                  selectableCategories.length === 0
+                }
                 className="mt-1 h-12 rounded-xl bg-linear-to-r from-cyan-300 via-sky-300 to-emerald-300 px-4 text-base font-extrabold uppercase tracking-wide text-slate-900 transition hover:scale-[1.01] hover:from-cyan-200 hover:to-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isSubmitting ? "Creating..." : "Create Lobby"}
+                {isSubmitting
+                  ? "Creating..."
+                  : categoriesLoading
+                    ? "Loading categories..."
+                    : "Create Lobby"}
               </button>
             </div>
           </form>

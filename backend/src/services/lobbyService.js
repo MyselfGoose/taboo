@@ -12,22 +12,58 @@ const {
   InMemorySessionRepository,
 } = require("../repositories/inMemorySessionRepository");
 
+function nowMs() {
+  return Date.now();
+}
+
+function allPlayersReady(lobby) {
+  return (
+    lobby.players.length > 0 && lobby.players.every((player) => player.ready)
+  );
+}
+
+function nextTeam(activeTeam, lobby) {
+  const candidate = activeTeam === "A" ? "B" : "A";
+  const hasCandidate = lobby.players.some(
+    (player) => player.team === candidate,
+  );
+  if (hasCandidate) {
+    return candidate;
+  }
+
+  return activeTeam;
+}
+
 class LobbyService {
-  constructor({ repository, sessionRepository, logger, config }) {
+  constructor({
+    repository,
+    sessionRepository,
+    datasetService,
+    logger,
+    config,
+  }) {
     this.repository = repository;
     this.sessionRepository =
       sessionRepository || new InMemorySessionRepository();
+    this.datasetService = datasetService;
     this.logger = logger;
     this.config = config;
   }
 
-  cleanup(now = Date.now()) {
+  cleanup(now = nowMs()) {
     this.repository.cleanupExpired(now, this.config.lobbyTtlMs);
     this.sessionRepository.cleanupExpired(now);
   }
 
-  createLobby({ playerName, roundCount, roundDurationSeconds, requestId }) {
-    const now = Date.now();
+  createLobby({
+    playerName,
+    roundCount,
+    roundDurationSeconds,
+    categoryMode,
+    categoryIds,
+    requestId,
+  }) {
+    const now = nowMs();
     this.cleanup(now);
 
     if (this.repository.count() >= this.config.maxActiveLobbies) {
@@ -45,6 +81,11 @@ class LobbyService {
     const normalizedRoundDurationSeconds = normalizeRoundDurationSeconds(
       roundDurationSeconds ?? this.config.defaultRoundDurationSeconds,
     );
+    const resolvedCategorySelection =
+      this.datasetService.resolveCategorySelection({
+        categoryMode,
+        categoryIds,
+      });
 
     const code = generateUniqueCode({
       length: this.config.lobbyCodeLength,
@@ -68,7 +109,10 @@ class LobbyService {
       settings: {
         roundCount: normalizedRoundCount,
         roundDurationSeconds: normalizedRoundDurationSeconds,
+        categoryMode: resolvedCategorySelection.categoryMode,
+        categoryIds: resolvedCategorySelection.categoryIds,
       },
+      game: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -81,6 +125,7 @@ class LobbyService {
       code: lobby.code,
       hostName: lobby.hostName,
       memberCount: lobby.players.length,
+      categoryMode: lobby.settings.categoryMode,
     });
 
     return lobby;
@@ -90,17 +135,21 @@ class LobbyService {
     playerName,
     roundCount,
     roundDurationSeconds,
+    categoryMode,
+    categoryIds,
     requestId,
   }) {
     const lobby = this.createLobby({
       playerName,
       roundCount,
       roundDurationSeconds,
+      categoryMode,
+      categoryIds,
       requestId,
     });
 
     const player = lobby.players[0];
-    const now = Date.now();
+    const now = nowMs();
     const resumeToken = this.sessionRepository.issueSession({
       lobbyCode: lobby.code,
       playerId: player.id,
@@ -142,7 +191,7 @@ class LobbyService {
   }
 
   joinLobby({ playerName, lobbyCode, requestId }) {
-    const now = Date.now();
+    const now = nowMs();
     this.cleanup(now);
 
     const memberName = normalizePlayerName(playerName);
@@ -169,11 +218,11 @@ class LobbyService {
         { A: 0, B: 0 },
       );
 
-      const nextTeam = teamCounts.A <= teamCounts.B ? "A" : "B";
+      const next = teamCounts.A <= teamCounts.B ? "A" : "B";
       lobby.players.push({
         id: crypto.randomUUID(),
         name: memberName,
-        team: nextTeam,
+        team: next,
         ready: false,
         joinedAt: now,
         lastSeenAt: now,
@@ -201,7 +250,7 @@ class LobbyService {
   joinLobbyWithSession({ playerName, lobbyCode, requestId }) {
     const lobby = this.joinLobby({ playerName, lobbyCode, requestId });
     const player = this.findPlayerByName(lobby, playerName);
-    const now = Date.now();
+    const now = nowMs();
 
     const resumeToken = this.sessionRepository.issueSession({
       lobbyCode: lobby.code,
@@ -220,7 +269,7 @@ class LobbyService {
   }
 
   restoreSession({ lobbyCode, resumeToken, requestId }) {
-    const now = Date.now();
+    const now = nowMs();
     this.cleanup(now);
 
     const code = normalizeLobbyCode(lobbyCode);
@@ -279,7 +328,7 @@ class LobbyService {
   }
 
   removeLobbyMember({ playerName, lobbyCode, requestId }) {
-    const now = Date.now();
+    const now = nowMs();
     const memberName = normalizePlayerName(playerName);
     const code = normalizeLobbyCode(lobbyCode);
     const lobby = this.repository.getByCode(code);
@@ -309,7 +358,7 @@ class LobbyService {
   }
 
   removeLobbyMemberById({ playerId, lobbyCode, requestId }) {
-    const now = Date.now();
+    const now = nowMs();
     const code = normalizeLobbyCode(lobbyCode);
     const lobby = this.repository.getByCode(code);
 
@@ -355,7 +404,7 @@ class LobbyService {
   }
 
   setPlayerTeamById({ playerId, lobbyCode, team, requestId }) {
-    const now = Date.now();
+    const now = nowMs();
     const code = normalizeLobbyCode(lobbyCode);
     const normalizedTeam = team === "B" ? "B" : "A";
     const lobby = this.repository.getByCode(code);
@@ -403,7 +452,7 @@ class LobbyService {
   }
 
   setPlayerReadyById({ playerId, lobbyCode, ready, requestId }) {
-    const now = Date.now();
+    const now = nowMs();
     const code = normalizeLobbyCode(lobbyCode);
     const lobby = this.repository.getByCode(code);
 
@@ -433,7 +482,291 @@ class LobbyService {
     return lobby;
   }
 
+  listCategories() {
+    return this.datasetService.getCategorySummaries();
+  }
+
+  ensureDeckForLobby(lobby) {
+    const deck = this.datasetService.buildDeck(lobby.settings.categoryIds);
+    if (deck.length === 0) {
+      throw new AppError(
+        "Selected categories do not contain playable cards.",
+        400,
+        "EMPTY_CATEGORY_SELECTION",
+      );
+    }
+
+    return deck;
+  }
+
+  initializeGame(lobby, now) {
+    if (lobby.players.length < 2) {
+      throw new AppError(
+        "At least two players are required to start the game.",
+        400,
+        "NOT_ENOUGH_PLAYERS",
+      );
+    }
+
+    if (!lobby.players.some((player) => player.team === "A")) {
+      throw new AppError(
+        "Team A needs at least one player.",
+        400,
+        "TEAM_EMPTY",
+      );
+    }
+
+    if (!lobby.players.some((player) => player.team === "B")) {
+      throw new AppError(
+        "Team B needs at least one player.",
+        400,
+        "TEAM_EMPTY",
+      );
+    }
+
+    const deck = this.ensureDeckForLobby(lobby);
+    const activeCard = deck.shift() || null;
+
+    lobby.game = {
+      status: "in_progress",
+      startedAt: now,
+      endedAt: null,
+      roundNumber: 1,
+      totalRounds: lobby.settings.roundCount,
+      activeTeam: "A",
+      scores: { A: 0, B: 0 },
+      roundEndsAt: now + lobby.settings.roundDurationSeconds * 1000,
+      currentCard: activeCard,
+      deck,
+      history: [],
+      lastActionAt: now,
+    };
+
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+  }
+
+  startGameIfAllReady({ lobbyCode, requestId, now = nowMs() }) {
+    const code = normalizeLobbyCode(lobbyCode);
+    const lobby = this.repository.getByCode(code);
+    if (!lobby) {
+      throw new AppError("Lobby not found.", 404, "LOBBY_NOT_FOUND");
+    }
+
+    if (
+      lobby.game?.status === "in_progress" ||
+      lobby.game?.status === "finished"
+    ) {
+      return false;
+    }
+
+    if (!allPlayersReady(lobby)) {
+      return false;
+    }
+
+    if (lobby.players.length < 2) {
+      return false;
+    }
+
+    if (!lobby.players.some((player) => player.team === "A")) {
+      return false;
+    }
+
+    if (!lobby.players.some((player) => player.team === "B")) {
+      return false;
+    }
+
+    this.initializeGame(lobby, now);
+
+    this.logger.info("Game started", {
+      requestId,
+      event: "game_started",
+      code,
+      roundCount: lobby.settings.roundCount,
+      categoryMode: lobby.settings.categoryMode,
+    });
+
+    return true;
+  }
+
+  drawNextCard(lobby) {
+    if (!lobby.game) {
+      return null;
+    }
+
+    if (!Array.isArray(lobby.game.deck) || lobby.game.deck.length === 0) {
+      lobby.game.deck = this.ensureDeckForLobby(lobby);
+    }
+
+    lobby.game.currentCard = lobby.game.deck.shift() || null;
+    return lobby.game.currentCard;
+  }
+
+  applyGameActionByPlayerId({ lobbyCode, playerId, action, requestId }) {
+    const now = nowMs();
+    const code = normalizeLobbyCode(lobbyCode);
+    const lobby = this.repository.getByCode(code);
+
+    if (!lobby) {
+      throw new AppError("Lobby not found.", 404, "LOBBY_NOT_FOUND");
+    }
+
+    const game = lobby.game;
+    if (!game || game.status !== "in_progress") {
+      throw new AppError("Game is not active.", 400, "GAME_NOT_ACTIVE");
+    }
+
+    if (game.roundEndsAt <= now) {
+      throw new AppError(
+        "Round has ended. Wait for the next round.",
+        409,
+        "ROUND_ENDED",
+      );
+    }
+
+    const player = this.findPlayerById(lobby, playerId);
+    if (!player) {
+      throw new AppError("Player not found in lobby.", 404, "PLAYER_NOT_FOUND");
+    }
+
+    if (player.team !== game.activeTeam) {
+      throw new AppError(
+        "Only players on the active team can trigger controls.",
+        403,
+        "NOT_YOUR_TURN",
+      );
+    }
+
+    const pointsByAction = {
+      guess_correct: 1,
+      taboo_called: -1,
+      pass_card: 0,
+    };
+
+    if (!(action in pointsByAction)) {
+      throw new AppError(
+        "Unsupported game action.",
+        400,
+        "INVALID_GAME_ACTION",
+      );
+    }
+
+    const points = pointsByAction[action];
+    game.scores[game.activeTeam] += points;
+    game.history.push({
+      at: now,
+      playerId,
+      playerName: player.name,
+      team: player.team,
+      action,
+      points,
+      cardId: game.currentCard ? game.currentCard.id : null,
+      cardQuestion: game.currentCard ? game.currentCard.question : null,
+    });
+    game.lastActionAt = now;
+
+    this.drawNextCard(lobby);
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+
+    this.logger.info("Game action applied", {
+      requestId,
+      event: "game_action",
+      code,
+      playerId,
+      action,
+      points,
+      activeTeam: game.activeTeam,
+      scoreA: game.scores.A,
+      scoreB: game.scores.B,
+    });
+
+    return lobby;
+  }
+
+  finishGame(lobby, now) {
+    lobby.game.status = "finished";
+    lobby.game.endedAt = now;
+    lobby.game.roundEndsAt = null;
+    lobby.game.currentCard = null;
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+  }
+
+  advanceRound(lobby, now) {
+    if (!lobby.game || lobby.game.status !== "in_progress") {
+      return null;
+    }
+
+    if (lobby.game.roundNumber >= lobby.game.totalRounds) {
+      this.finishGame(lobby, now);
+      return "game_finished";
+    }
+
+    lobby.game.roundNumber += 1;
+    lobby.game.activeTeam = nextTeam(lobby.game.activeTeam, lobby);
+    lobby.game.roundEndsAt = now + lobby.settings.roundDurationSeconds * 1000;
+    this.drawNextCard(lobby);
+    lobby.game.lastActionAt = now;
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+
+    return "round_started";
+  }
+
+  advanceExpiredGames(now = nowMs()) {
+    const lobbies = this.repository.listAll();
+    const updates = [];
+
+    for (const lobby of lobbies) {
+      if (!lobby.game || lobby.game.status !== "in_progress") {
+        continue;
+      }
+
+      if (
+        typeof lobby.game.roundEndsAt !== "number" ||
+        lobby.game.roundEndsAt > now
+      ) {
+        continue;
+      }
+
+      const reason = this.advanceRound(lobby, now);
+      if (reason) {
+        updates.push({ code: lobby.code, reason });
+      }
+    }
+
+    return updates;
+  }
+
+  toGameSnapshot(game, now = nowMs()) {
+    if (!game) {
+      return null;
+    }
+
+    return {
+      status: game.status,
+      startedAt: game.startedAt,
+      endedAt: game.endedAt,
+      roundNumber: game.roundNumber,
+      totalRounds: game.totalRounds,
+      activeTeam: game.activeTeam,
+      scores: {
+        A: game.scores?.A || 0,
+        B: game.scores?.B || 0,
+      },
+      roundEndsAt: game.roundEndsAt,
+      secondsRemaining:
+        typeof game.roundEndsAt === "number"
+          ? Math.max(0, Math.ceil((game.roundEndsAt - now) / 1000))
+          : 0,
+      currentCard: game.currentCard,
+      history: Array.isArray(game.history) ? game.history.slice(-12) : [],
+    };
+  }
+
   toLobbySnapshot(lobby) {
+    const now = nowMs();
     const players = lobby.players.map((player) => ({
       id: player.id,
       name: player.name,
@@ -465,7 +798,13 @@ class LobbyService {
       settings: {
         roundCount: lobby.settings.roundCount,
         roundDurationSeconds: lobby.settings.roundDurationSeconds,
+        categoryMode: lobby.settings.categoryMode,
+        categoryIds: lobby.settings.categoryIds,
+        categoryNames: this.datasetService.getCategoryNames(
+          lobby.settings.categoryIds || [],
+        ),
       },
+      game: this.toGameSnapshot(lobby.game, now),
       memberCount: players.length,
       createdAt: lobby.createdAt,
       updatedAt: lobby.updatedAt,

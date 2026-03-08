@@ -16,6 +16,30 @@ function renderApp() {
 describe("App routed lobby flow", () => {
   beforeEach(() => {
     global.fetch = vi.fn();
+    global.fetch.mockImplementation((url) => {
+      if (String(url).includes("/api/categories")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            categories: [
+              {
+                categoryId: 1,
+                category: "Classic",
+                wordCount: 100,
+                selectable: true,
+              },
+            ],
+          }),
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({}),
+      });
+    });
 
     class MockWebSocket {
       static OPEN = 1;
@@ -80,22 +104,56 @@ describe("App routed lobby flow", () => {
 
   it("creates lobby and navigates to lobby route", async () => {
     const user = userEvent.setup();
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      headers: new Headers({ "content-type": "application/json" }),
-      json: async () => ({
-        code: "AB12",
-        playerName: "Alice",
-        lobby: {
-          code: "AB12",
-          hostName: "Alice",
-          members: ["Alice"],
-          players: [{ name: "Alice", team: "A", ready: false }],
-          teams: { A: ["Alice"], B: [] },
-          allReady: false,
-          settings: { roundCount: 5, roundDurationSeconds: 60 },
-        },
-      }),
+    global.fetch.mockImplementation((url) => {
+      if (String(url).includes("/api/categories")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            categories: [
+              {
+                categoryId: 1,
+                category: "Classic",
+                wordCount: 100,
+                selectable: true,
+              },
+            ],
+          }),
+        });
+      }
+
+      if (String(url).includes("/api/lobbies")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            code: "AB12",
+            playerName: "Alice",
+            lobby: {
+              code: "AB12",
+              hostName: "Alice",
+              members: ["Alice"],
+              players: [{ name: "Alice", team: "A", ready: false }],
+              teams: { A: ["Alice"], B: [] },
+              allReady: false,
+              settings: {
+                roundCount: 5,
+                roundDurationSeconds: 60,
+                categoryMode: "single",
+                categoryIds: [1],
+                categoryNames: ["Classic"],
+              },
+              game: null,
+            },
+          }),
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({}),
+      });
     });
 
     renderApp();
@@ -120,6 +178,8 @@ describe("App routed lobby flow", () => {
           name: "Alice",
           roundCount: 5,
           roundDurationSeconds: 60,
+          categoryMode: "single",
+          categoryIds: [1],
         }),
       }),
     );
@@ -127,11 +187,38 @@ describe("App routed lobby flow", () => {
 
   it("shows API error when join fails", async () => {
     const user = userEvent.setup();
-    global.fetch.mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      headers: new Headers({ "content-type": "application/json" }),
-      json: async () => ({ error: "Lobby not found." }),
+    global.fetch.mockImplementation((url) => {
+      if (String(url).includes("/api/categories")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            categories: [
+              {
+                categoryId: 1,
+                category: "Classic",
+                wordCount: 100,
+                selectable: true,
+              },
+            ],
+          }),
+        });
+      }
+
+      if (String(url).includes("/api/lobbies/join")) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ error: "Lobby not found." }),
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({}),
+      });
     });
 
     renderApp();

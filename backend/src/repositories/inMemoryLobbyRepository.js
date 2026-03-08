@@ -25,6 +25,10 @@ class InMemoryLobbyRepository {
     return this.lobbies.get(code);
   }
 
+  listAll() {
+    return Array.from(this.lobbies.values());
+  }
+
   deleteByCode(code) {
     this.lobbies.delete(code);
   }

@@ -22,12 +22,12 @@ export default function LobbyPage() {
       return;
     }
 
-    if (lobbySession?.lobby?.allReady) {
+    if (lobbySession?.lobby?.game?.status === "in_progress") {
       navigate(`/game/${lobbySession.code}`);
     }
   }, [
     restoreState,
-    lobbySession?.lobby?.allReady,
+    lobbySession?.lobby?.game?.status,
     lobbySession?.code,
     navigate,
   ]);
@@ -105,6 +105,10 @@ export default function LobbyPage() {
               </h1>
               <p className="mt-2 text-base text-slate-200 sm:text-lg">
                 Gather your crew, lock your teams, and get everyone ready.
+              </p>
+              <p className="mt-2 text-sm text-slate-300">
+                Categories:{" "}
+                {lobby.settings?.categoryNames?.join(", ") || "Loading"}
               </p>
             </div>
 

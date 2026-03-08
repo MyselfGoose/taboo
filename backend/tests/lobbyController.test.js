@@ -75,6 +75,8 @@ test("controller create delegates to service and responds", () => {
       playerName: "Alice",
       roundCount: undefined,
       roundDurationSeconds: undefined,
+      categoryMode: undefined,
+      categoryIds: undefined,
       requestId: "r1",
     },
   ]);

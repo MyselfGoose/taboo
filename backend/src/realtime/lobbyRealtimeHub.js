@@ -193,7 +193,26 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
             requestId: ctx.requestId,
           });
 
-          broadcastLobbyState(lobby.code, "ready_changed");
+          const started = lobbyService.startGameIfAllReady({
+            lobbyCode: lobby.code,
+            requestId: ctx.requestId,
+          });
+          broadcastLobbyState(
+            lobby.code,
+            started ? "game_started" : "ready_changed",
+          );
+          return;
+        }
+
+        if (message.type === "game_action") {
+          const lobby = lobbyService.applyGameActionByPlayerId({
+            playerId: ctx.playerId,
+            lobbyCode: ctx.code,
+            action: message.action,
+            requestId: ctx.requestId,
+          });
+
+          broadcastLobbyState(lobby.code, `game_action_${message.action}`);
           return;
         }
 
@@ -235,11 +254,28 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
     }
   }, 30000);
 
+  const gameTicker = setInterval(() => {
+    const updates = lobbyService.advanceExpiredGames(Date.now());
+    for (const update of updates) {
+      try {
+        broadcastLobbyState(update.code, update.reason);
+      } catch (error) {
+        logger.warn("Lobby broadcast skipped during game ticker", {
+          event: "ws_game_ticker_skip",
+          code: update.code,
+          message: error.message,
+        });
+      }
+    }
+  }, 1000);
+
   heartbeat.unref();
+  gameTicker.unref();
 
   return {
     close() {
       clearInterval(heartbeat);
+      clearInterval(gameTicker);
       wss.close();
     },
   };

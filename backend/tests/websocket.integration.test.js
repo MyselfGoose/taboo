@@ -154,6 +154,44 @@ test("websocket broadcasts lobby member updates in real time", async () => {
     true,
   );
 
+  hostSocket.send(JSON.stringify({ type: "change_team", team: "B" }));
+  await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.reason === "team_changed" &&
+      msg.lobby &&
+      msg.lobby.players.some(
+        (player) => player.name === "Host" && player.team === "B",
+      ),
+  );
+
+  hostSocket.send(JSON.stringify({ type: "set_ready", ready: true }));
+
+  const startedState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.reason === "game_started" &&
+      msg.lobby?.game?.status === "in_progress",
+  );
+
+  assert.equal(startedState.lobby.game.activeTeam, "A");
+
+  bobSocket.send(
+    JSON.stringify({ type: "game_action", action: "guess_correct" }),
+  );
+
+  const scoredState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.reason === "game_action_guess_correct" &&
+      msg.lobby?.game?.scores?.A === 1,
+  );
+
+  assert.equal(scoredState.lobby.game.scores.A, 1);
+
   bobSocket.close();
 
   const leftState = await waitForMessage(

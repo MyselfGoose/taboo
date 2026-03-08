@@ -19,6 +19,7 @@ const {
   SqliteSessionRepository,
 } = require("./repositories/sqliteSessionRepository");
 const { createSqliteSessionDatabase } = require("./database/sqlite");
+const { DatasetService } = require("./services/datasetService");
 const { LobbyService } = require("./services/lobbyService");
 const { createLobbyController } = require("./controllers/lobbyController");
 const { requestIdMiddleware } = require("./middleware/requestId");
@@ -85,9 +86,11 @@ function createApp() {
 
   const { lobbyRepository, sessionRepository, sqliteDatabase } =
     createRepositories();
+  const datasetService = new DatasetService({ config, logger });
   const lobbyService = new LobbyService({
     repository: lobbyRepository,
     sessionRepository,
+    datasetService,
     logger,
     config,
   });

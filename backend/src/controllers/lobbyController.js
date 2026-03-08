@@ -6,6 +6,8 @@ function createLobbyController({ lobbyService }) {
           playerName: req.body?.name,
           roundCount: req.body?.roundCount,
           roundDurationSeconds: req.body?.roundDurationSeconds,
+          categoryMode: req.body?.categoryMode,
+          categoryIds: req.body?.categoryIds,
           requestId: req.requestId,
         };
 
@@ -20,6 +22,15 @@ function createLobbyController({ lobbyService }) {
           ...(result.resumeToken ? { resumeToken: result.resumeToken } : {}),
           lobby: lobbyService.toLobbySnapshot(result.lobby),
         });
+      } catch (error) {
+        return next(error);
+      }
+    },
+
+    categories(req, res, next) {
+      try {
+        const categories = lobbyService.listCategories();
+        return res.status(200).json({ categories });
       } catch (error) {
         return next(error);
       }

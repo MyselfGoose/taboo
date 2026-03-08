@@ -9,6 +9,45 @@ const { AppError } = require("../src/utils/appError");
 
 function createService(overrides = {}) {
   const repository = overrides.repository || new InMemoryLobbyRepository();
+  const datasetService = overrides.datasetService || {
+    resolveCategorySelection({ categoryMode, categoryIds }) {
+      if (categoryMode === "single") {
+        return {
+          categoryMode: "single",
+          categoryIds: [Number(categoryIds?.[0] || 1)],
+        };
+      }
+
+      return {
+        categoryMode: "all",
+        categoryIds: [1, 2],
+      };
+    },
+    buildDeck() {
+      return [
+        {
+          id: "1:alpha",
+          question: "Alpha",
+          taboo: ["One", "Two", "Three", "Four", "Five"],
+          categoryId: 1,
+          category: "Classic",
+        },
+        {
+          id: "2:beta",
+          question: "Beta",
+          taboo: ["Uno", "Dos", "Tres", "Cuatro", "Cinco"],
+          categoryId: 2,
+          category: "History",
+        },
+      ];
+    },
+    getCategoryNames(ids) {
+      return ids.map((id) => (id === 1 ? "Classic" : "History"));
+    },
+    getCategorySummaries() {
+      return [];
+    },
+  };
   const logger = {
     info: () => {},
     warn: () => {},
@@ -24,7 +63,7 @@ function createService(overrides = {}) {
     ...overrides.config,
   };
 
-  return new LobbyService({ repository, logger, config });
+  return new LobbyService({ repository, datasetService, logger, config });
 }
 
 test("createLobby creates lobby with unique code and host member", () => {
