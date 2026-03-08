@@ -1,33 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;700;800&display=swap");
+@import "tailwindcss";
 
-:root {
-  --bg-start: #070d15;
-  --bg-end: #1b2638;
-  --text-main: #f4f7fc;
-  --muted: #a6b7cc;
-
-  font-family: "Manrope", "Nunito Sans", sans-serif;
-  line-height: 1.45;
-  font-weight: 500;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  min-height: 100%;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  color: var(--text-main);
-  background: linear-gradient(165deg, var(--bg-start) 0%, var(--bg-end) 100%);
+@theme {
+  --font-display:
+    "Bangers", "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
+  --font-body: "Baloo 2", "Trebuchet MS", "Segoe UI", sans-serif;
 }

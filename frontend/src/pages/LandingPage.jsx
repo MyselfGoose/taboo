@@ -94,100 +94,202 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="shell">
-      <main className="landing" data-testid="landing-page">
-        <header className="hero-card">
-          <p className="kicker">Realtime Party Game</p>
-          <h1>Taboo</h1>
-          <p>
-            Spin up a lobby in seconds, split into teams, and jump into a
-            high-energy guessing round.
+    <div className="relative min-h-screen overflow-hidden bg-[#0f1229] font-body text-white">
+      <div className="pointer-events-none absolute -left-16 top-20 h-64 w-64 rounded-full bg-fuchsia-500/35 blur-3xl" />
+      <div className="pointer-events-none absolute -right-10 top-10 h-72 w-72 rounded-full bg-cyan-400/30 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-amber-400/20 blur-3xl" />
+
+      <main
+        className="relative z-10 mx-auto grid min-h-screen w-full max-w-6xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:gap-6 lg:px-10"
+        data-testid="landing-page"
+      >
+        <section className="flex flex-col justify-center rounded-3xl border border-white/15 bg-slate-900/60 p-5 shadow-2xl shadow-black/40 backdrop-blur md:p-8">
+          <p className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-300/40 bg-amber-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">
+            Realtime Party Game
           </p>
-        </header>
-
-        {localError ? (
-          <p role="alert" className="banner error">
-            {localError}
+          <h1 className="mt-4 font-display text-6xl uppercase leading-none tracking-wide text-amber-300 drop-shadow-[0_4px_0_#8a2be2] sm:text-7xl">
+            Taboo
+          </h1>
+          <p className="mt-4 max-w-xl text-lg leading-relaxed text-slate-200/95 sm:text-xl">
+            Build your room, split squads, then race through wild word rounds.
+            Quick to launch, chaotic to play.
           </p>
-        ) : null}
 
-        <section className="actions-grid" aria-label="Lobby actions">
-          <form className="panel" onSubmit={handleCreate}>
-            <h2>Create Lobby</h2>
+          <div className="mt-6 grid gap-3 text-sm text-cyan-100 sm:grid-cols-3">
+            <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-3">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-cyan-100/80">
+                Fast Setup
+              </p>
+              <p className="mt-1 text-base font-semibold text-cyan-50">
+                10 sec to lobby
+              </p>
+            </div>
+            <div className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/10 p-3">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-fuchsia-100/80">
+                Live Sync
+              </p>
+              <p className="mt-1 text-base font-semibold text-fuchsia-50">
+                Realtime teams
+              </p>
+            </div>
+            <div className="rounded-2xl border border-amber-300/35 bg-amber-300/10 p-3">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-amber-100/80">
+                Party Energy
+              </p>
+              <p className="mt-1 text-base font-semibold text-amber-50">
+                Ready to shout
+              </p>
+            </div>
+          </div>
+        </section>
 
-            <label htmlFor="create-name">Your name</label>
-            <input
-              id="create-name"
-              autoComplete="nickname"
-              placeholder="Host name"
-              value={createName}
-              onChange={(event) => setCreateName(event.target.value)}
-              maxLength={32}
-              required
-            />
-
-            <label htmlFor="rounds">Rounds</label>
-            <input
-              id="rounds"
-              type="number"
-              min={1}
-              max={10}
-              value={roundCount}
-              onChange={(event) => setRoundCount(Number(event.target.value))}
-              required
-            />
-
-            <label htmlFor="duration">Round duration</label>
-            <select
-              id="duration"
-              value={roundDurationSeconds}
-              onChange={(event) =>
-                setRoundDurationSeconds(Number(event.target.value))
-              }
+        <section
+          className="flex flex-col justify-center gap-4 lg:gap-5"
+          aria-label="Lobby actions"
+        >
+          {localError ? (
+            <p
+              role="alert"
+              className="rounded-2xl border border-rose-300/40 bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-100"
             >
-              {roundOptionLabels.map((option) => (
-                <option key={option.seconds} value={option.seconds}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              {localError}
+            </p>
+          ) : null}
 
-            <button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating..." : "Create Lobby"}
-            </button>
+          <form
+            className="rounded-3xl border border-white/15 bg-gradient-to-br from-indigo-950/90 via-slate-900/95 to-violet-950/90 p-5 shadow-2xl shadow-violet-900/40 backdrop-blur md:p-6"
+            onSubmit={handleCreate}
+          >
+            <h2 className="font-display text-3xl uppercase tracking-wide text-amber-300">
+              Create Lobby
+            </h2>
+            <div className="mt-4 grid gap-3">
+              <label
+                htmlFor="create-name"
+                className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300"
+              >
+                Your name
+              </label>
+              <input
+                id="create-name"
+                autoComplete="nickname"
+                placeholder="Host name"
+                value={createName}
+                onChange={(event) => setCreateName(event.target.value)}
+                maxLength={32}
+                className="h-11 rounded-xl border border-white/20 bg-slate-800/80 px-3 text-base text-white outline-none ring-0 transition placeholder:text-slate-400 focus:border-cyan-300 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.2)]"
+                required
+              />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <label
+                    htmlFor="rounds"
+                    className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300"
+                  >
+                    Rounds
+                  </label>
+                  <input
+                    id="rounds"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={roundCount}
+                    onChange={(event) =>
+                      setRoundCount(Number(event.target.value))
+                    }
+                    className="h-11 rounded-xl border border-white/20 bg-slate-800/80 px-3 text-base text-white outline-none transition focus:border-cyan-300 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.2)]"
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <label
+                    htmlFor="duration"
+                    className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300"
+                  >
+                    Round duration
+                  </label>
+                  <select
+                    id="duration"
+                    value={roundDurationSeconds}
+                    onChange={(event) =>
+                      setRoundDurationSeconds(Number(event.target.value))
+                    }
+                    className="h-11 rounded-xl border border-white/20 bg-slate-800/80 px-3 text-base text-white outline-none transition focus:border-cyan-300 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.2)]"
+                  >
+                    {roundOptionLabels.map((option) => (
+                      <option key={option.seconds} value={option.seconds}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="mt-1 h-12 rounded-xl bg-gradient-to-r from-cyan-300 via-sky-300 to-emerald-300 px-4 text-base font-extrabold uppercase tracking-wide text-slate-900 transition hover:scale-[1.01] hover:from-cyan-200 hover:to-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isSubmitting ? "Creating..." : "Create Lobby"}
+              </button>
+            </div>
           </form>
 
-          <form className="panel" onSubmit={handleJoin}>
-            <h2>Join Lobby</h2>
+          <form
+            className="rounded-3xl border border-white/15 bg-gradient-to-br from-purple-950/95 via-slate-900/95 to-indigo-950/95 p-5 shadow-2xl shadow-fuchsia-900/35 backdrop-blur md:p-6"
+            onSubmit={handleJoin}
+          >
+            <h2 className="font-display text-3xl uppercase tracking-wide text-fuchsia-300">
+              Join Lobby
+            </h2>
+            <div className="mt-4 grid gap-3">
+              <label
+                htmlFor="join-name"
+                className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300"
+              >
+                Your name
+              </label>
+              <input
+                id="join-name"
+                autoComplete="nickname"
+                placeholder="Player name"
+                value={joinName}
+                onChange={(event) => setJoinName(event.target.value)}
+                maxLength={32}
+                className="h-11 rounded-xl border border-white/20 bg-slate-800/80 px-3 text-base text-white outline-none ring-0 transition placeholder:text-slate-400 focus:border-fuchsia-300 focus:shadow-[0_0_0_3px_rgba(217,70,239,0.2)]"
+                required
+              />
 
-            <label htmlFor="join-name">Your name</label>
-            <input
-              id="join-name"
-              autoComplete="nickname"
-              placeholder="Player name"
-              value={joinName}
-              onChange={(event) => setJoinName(event.target.value)}
-              maxLength={32}
-              required
-            />
+              <label
+                htmlFor="join-code"
+                className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300"
+              >
+                Lobby code
+              </label>
+              <input
+                id="join-code"
+                inputMode="text"
+                pattern="[A-Za-z0-9]{4}"
+                maxLength={4}
+                placeholder="AB12"
+                value={joinCode}
+                onChange={(event) =>
+                  setJoinCode(normalizeCode(event.target.value))
+                }
+                className="h-11 rounded-xl border border-white/20 bg-slate-800/80 px-3 text-base uppercase tracking-[0.2em] text-white outline-none transition placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-400 focus:border-fuchsia-300 focus:shadow-[0_0_0_3px_rgba(217,70,239,0.2)]"
+                required
+              />
 
-            <label htmlFor="join-code">Lobby code</label>
-            <input
-              id="join-code"
-              inputMode="text"
-              pattern="[A-Za-z0-9]{4}"
-              maxLength={4}
-              placeholder="AB12"
-              value={joinCode}
-              onChange={(event) =>
-                setJoinCode(normalizeCode(event.target.value))
-              }
-              required
-            />
-
-            <button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Joining..." : "Join Lobby"}
-            </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="mt-1 h-12 rounded-xl bg-gradient-to-r from-fuchsia-300 via-rose-300 to-amber-200 px-4 text-base font-extrabold uppercase tracking-wide text-slate-900 transition hover:scale-[1.01] hover:from-fuchsia-200 hover:to-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isSubmitting ? "Joining..." : "Join Lobby"}
+              </button>
+            </div>
           </form>
         </section>
       </main>
