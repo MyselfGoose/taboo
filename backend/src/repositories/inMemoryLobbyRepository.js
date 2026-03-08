@@ -16,6 +16,11 @@ class InMemoryLobbyRepository {
     return lobby;
   }
 
+  save(lobby) {
+    this.lobbies.set(lobby.code, lobby);
+    return lobby;
+  }
+
   getByCode(code) {
     return this.lobbies.get(code);
   }

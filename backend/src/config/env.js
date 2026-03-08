@@ -50,6 +50,22 @@ function parsePositiveInt(value, fallback) {
   return parsed;
 }
 
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  if (String(value).toLowerCase() === "true") {
+    return true;
+  }
+
+  if (String(value).toLowerCase() === "false") {
+    return false;
+  }
+
+  return fallback;
+}
+
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProduction = nodeEnv === "production";
 
@@ -76,6 +92,15 @@ const config = {
   ),
   lobbyTtlMs: parsePositiveInt(process.env.LOBBY_TTL_MINUTES, 120) * 60 * 1000,
   maxActiveLobbies: parsePositiveInt(process.env.MAX_ACTIVE_LOBBIES, 20000),
+  useSqliteSessions: parseBoolean(process.env.USE_SQLITE_SESSIONS, true),
+  useSqliteLobbies: parseBoolean(
+    process.env.USE_SQLITE_LOBBIES,
+    nodeEnv !== "test",
+  ),
+  dataDir: process.env.DATA_DIR || "./data",
+  sessionDbFileName: process.env.SESSION_DB_FILE || "sessions.db",
+  sessionTtlMs:
+    parsePositiveInt(process.env.SESSION_TTL_MINUTES, 120) * 60 * 1000,
 };
 
 module.exports = {
@@ -83,4 +108,5 @@ module.exports = {
   parseTrustProxy,
   parseAllowedOrigins,
   parsePositiveInt,
+  parseBoolean,
 };

@@ -90,6 +90,34 @@ test("POST /api/lobbies/join joins an existing lobby", async () => {
   assert.equal(joinResponse.status, 200);
   assert.equal(joinResponse.body.lobby.memberCount, 2);
   assert.deepEqual(joinResponse.body.lobby.members, ["Host", "Bob"]);
+  assert.equal(typeof joinResponse.body.resumeToken, "string");
+  assert.equal(typeof joinResponse.body.playerId, "string");
+});
+
+test("POST /api/sessions/restore restores a valid session", async () => {
+  const app = createApp();
+
+  const createResponse = await request(app)
+    .post("/api/lobbies")
+    .send({ name: "Host" })
+    .set("Content-Type", "application/json");
+
+  assert.equal(createResponse.status, 201);
+  assert.equal(typeof createResponse.body.resumeToken, "string");
+
+  const restoreResponse = await request(app)
+    .post("/api/sessions/restore")
+    .send({
+      code: createResponse.body.code,
+      resumeToken: createResponse.body.resumeToken,
+    })
+    .set("Content-Type", "application/json");
+
+  assert.equal(restoreResponse.status, 200);
+  assert.equal(restoreResponse.body.code, createResponse.body.code);
+  assert.equal(restoreResponse.body.playerName, "Host");
+  assert.equal(typeof restoreResponse.body.playerId, "string");
+  assert.equal(typeof restoreResponse.body.resumeToken, "string");
 });
 
 test("POST /api/lobbies creates unique codes across consecutive calls", async () => {

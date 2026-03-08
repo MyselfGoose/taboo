@@ -90,6 +90,35 @@ export async function getLobby(code) {
   return payload;
 }
 
+export async function restoreSession({ code, resumeToken }) {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/restore`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ code, resumeToken }),
+  });
+
+  const payload = await parseApiResponse(response);
+
+  if (!response.ok) {
+    throw new Error(
+      toErrorMessage(response.status, payload, "Could not restore session"),
+    );
+  }
+
+  if (
+    !payload ||
+    !payload.lobby ||
+    !payload.playerName ||
+    !payload.resumeToken
+  ) {
+    throw new Error("Restore session response is missing required data");
+  }
+
+  return payload;
+}
+
 export function getLobbyWebSocketUrl() {
   return `${toWebSocketBaseUrl(API_BASE_URL)}/ws`;
 }

@@ -5,6 +5,7 @@ function createLobbyRouter({ lobbyController }) {
 
   router.post("/lobbies", lobbyController.create);
   router.post("/lobbies/join", lobbyController.join);
+  router.post("/sessions/restore", lobbyController.restoreSession);
   router.get("/lobbies/:code", lobbyController.getByCode);
 
   return router;

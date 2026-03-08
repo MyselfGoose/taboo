@@ -6,8 +6,8 @@ const {
   normalizePlayerName,
 } = require("../utils/validation");
 
-function keyForMember(code, name) {
-  return `${code}:${name.toLowerCase()}`;
+function keyForMember(code, playerId) {
+  return `${code}:${playerId}`;
 }
 
 function safeSend(socket, payload) {
@@ -44,7 +44,7 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
 
   function removeSocketFromLobby(socket, reason) {
     const ctx = socketContext.get(socket);
-    if (!ctx || !ctx.code || !ctx.name) {
+    if (!ctx || !ctx.code || !ctx.playerId) {
       return;
     }
 
@@ -56,13 +56,13 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
       }
     }
 
-    const memberKey = keyForMember(ctx.code, ctx.name);
+    const memberKey = keyForMember(ctx.code, ctx.playerId);
     const nextCount = (memberConnectionCount.get(memberKey) || 1) - 1;
 
     if (nextCount <= 0) {
       memberConnectionCount.delete(memberKey);
-      const lobby = lobbyService.removeLobbyMember({
-        playerName: ctx.name,
+      const lobby = lobbyService.removeLobbyMemberById({
+        playerId: ctx.playerId,
         lobbyCode: ctx.code,
         requestId: ctx.requestId,
       });
@@ -106,14 +106,33 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
 
       try {
         if (message.type === "subscribe") {
-          const code = normalizeLobbyCode(message.code);
-          const name = normalizePlayerName(message.name);
+          let code;
+          let playerId;
+          let lobby;
 
-          const lobby = lobbyService.joinLobby({
-            playerName: name,
-            lobbyCode: code,
-            requestId,
-          });
+          if (message.resumeToken) {
+            const restored = lobbyService.restoreSession({
+              lobbyCode: message.code,
+              resumeToken: message.resumeToken,
+              requestId,
+            });
+            code = restored.lobby.code;
+            playerId = restored.playerId;
+            lobby = restored.lobby;
+          } else {
+            code = normalizeLobbyCode(message.code);
+            const name = normalizePlayerName(message.name);
+            lobby = lobbyService.joinLobby({
+              playerName: name,
+              lobbyCode: code,
+              requestId,
+            });
+            playerId = lobbyService.findPlayerByName(lobby, name)?.id;
+          }
+
+          if (!playerId) {
+            throw new Error("Unable to identify player for subscription.");
+          }
 
           let lobbySockets = socketsByLobby.get(code);
           if (!lobbySockets) {
@@ -122,14 +141,14 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
           }
 
           const previousCtx = socketContext.get(socket);
-          if (previousCtx && previousCtx.code && previousCtx.name) {
+          if (previousCtx && previousCtx.code && previousCtx.playerId) {
             removeSocketFromLobby(socket, "member_moved");
           }
 
           lobbySockets.add(socket);
-          socketContext.set(socket, { code, name, requestId });
+          socketContext.set(socket, { code, playerId, requestId });
 
-          const memberKey = keyForMember(code, name);
+          const memberKey = keyForMember(code, playerId);
           memberConnectionCount.set(
             memberKey,
             (memberConnectionCount.get(memberKey) || 0) + 1,
@@ -145,7 +164,7 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
         }
 
         const ctx = socketContext.get(socket);
-        if (!ctx?.code || !ctx?.name) {
+        if (!ctx?.code || !ctx?.playerId) {
           safeSend(socket, {
             type: "error",
             code: "NOT_SUBSCRIBED",
@@ -155,8 +174,8 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
         }
 
         if (message.type === "change_team") {
-          const lobby = lobbyService.setPlayerTeam({
-            playerName: ctx.name,
+          const lobby = lobbyService.setPlayerTeamById({
+            playerId: ctx.playerId,
             lobbyCode: ctx.code,
             team: message.team,
             requestId: ctx.requestId,
@@ -167,8 +186,8 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
         }
 
         if (message.type === "set_ready") {
-          const lobby = lobbyService.setPlayerReady({
-            playerName: ctx.name,
+          const lobby = lobbyService.setPlayerReadyById({
+            playerId: ctx.playerId,
             lobbyCode: ctx.code,
             ready: message.ready,
             requestId: ctx.requestId,

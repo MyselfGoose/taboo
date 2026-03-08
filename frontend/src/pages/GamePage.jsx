@@ -5,7 +5,15 @@ import { useLobby } from "../hooks/useLobby";
 
 export default function GamePage() {
   const { code } = useParams();
-  const { lobbySession } = useLobby();
+  const { lobbySession, restoreState } = useLobby();
+
+  if (restoreState === "restoring") {
+    return (
+      <div className="min-h-screen bg-[#090f24] p-6 text-center text-slate-100">
+        Reconnecting to your game...
+      </div>
+    );
+  }
 
   if (!lobbySession || lobbySession.code !== code) {
     return <Navigate to="/" replace />;

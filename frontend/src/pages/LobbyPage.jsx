@@ -13,13 +13,32 @@ export default function LobbyPage() {
     errorMessage,
     setErrorMessage,
     tabTag,
+    restoreState,
+    restoreError,
   } = useLobby();
 
   useEffect(() => {
+    if (restoreState === "restoring") {
+      return;
+    }
+
     if (lobbySession?.lobby?.allReady) {
       navigate(`/game/${lobbySession.code}`);
     }
-  }, [lobbySession?.lobby?.allReady, lobbySession?.code, navigate]);
+  }, [
+    restoreState,
+    lobbySession?.lobby?.allReady,
+    lobbySession?.code,
+    navigate,
+  ]);
+
+  if (restoreState === "restoring") {
+    return (
+      <div className="min-h-screen bg-[#0b1025] p-6 text-center text-slate-100">
+        Reconnecting to your lobby...
+      </div>
+    );
+  }
 
   if (!lobbySession || !lobbySession.playerName || lobbySession.code !== code) {
     return <Navigate to="/" replace />;
@@ -27,10 +46,15 @@ export default function LobbyPage() {
 
   const lobby = lobbySession.lobby;
   const currentPlayer =
-    lobby?.players?.find(
-      (player) =>
-        player.name.toLowerCase() === lobbySession.playerName.toLowerCase(),
-    ) ?? null;
+    lobby?.players?.find((player) => {
+      if (lobbySession.playerId && player.id) {
+        return player.id === lobbySession.playerId;
+      }
+
+      return (
+        player.name.toLowerCase() === lobbySession.playerName.toLowerCase()
+      );
+    }) ?? null;
   const currentTeam = currentPlayer?.team ?? null;
   const playerNameLower = lobbySession.playerName.toLowerCase();
 
@@ -107,6 +131,12 @@ export default function LobbyPage() {
             className="rounded-2xl border border-rose-300/45 bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-100 lg:col-span-2"
           >
             {errorMessage}
+          </p>
+        ) : null}
+
+        {restoreError ? (
+          <p className="rounded-2xl border border-amber-300/45 bg-amber-400/20 px-4 py-3 text-sm font-semibold text-amber-100 lg:col-span-2">
+            {restoreError}
           </p>
         ) : null}
 

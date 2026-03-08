@@ -5,6 +5,7 @@ const {
   parseTrustProxy,
   parseAllowedOrigins,
   parsePositiveInt,
+  parseBoolean,
 } = require("../src/config/env");
 
 test("parseTrustProxy handles booleans and numbers", () => {
@@ -36,4 +37,11 @@ test("parsePositiveInt enforces positive integers", () => {
   assert.equal(parsePositiveInt("0", 5), 5);
   assert.equal(parsePositiveInt("-1", 5), 5);
   assert.equal(parsePositiveInt("NaN", 5), 5);
+});
+
+test("parseBoolean handles true false and fallback", () => {
+  assert.equal(parseBoolean("true", false), true);
+  assert.equal(parseBoolean("false", true), false);
+  assert.equal(parseBoolean("", true), true);
+  assert.equal(parseBoolean("invalid", false), false);
 });

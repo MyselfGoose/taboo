@@ -55,7 +55,7 @@ function configureTimeouts(server) {
   server.headersTimeout = 66000;
 }
 
-function setupGracefulShutdown(server, realtimeHub) {
+function setupGracefulShutdown(server, realtimeHub, sqliteDatabase) {
   const shutdown = (signal) => {
     logger.info("Shutdown signal received", {
       event: "shutdown_signal",
@@ -64,6 +64,10 @@ function setupGracefulShutdown(server, realtimeHub) {
 
     if (realtimeHub) {
       realtimeHub.close();
+    }
+
+    if (sqliteDatabase) {
+      sqliteDatabase.close();
     }
 
     server.close((error) => {
@@ -103,7 +107,7 @@ function startServer() {
     logger,
   });
   configureTimeouts(server);
-  setupGracefulShutdown(server, realtimeHub);
+  setupGracefulShutdown(server, realtimeHub, app.locals.sqliteDatabase);
   return { app, server, realtimeHub };
 }
 

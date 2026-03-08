@@ -53,7 +53,9 @@ export default function LandingPage() {
 
       setLobbySession({
         code: response.code,
-        playerName: submittedName,
+        playerId: response.playerId,
+        playerName: response.playerName || submittedName,
+        resumeToken: response.resumeToken,
         lobby: response.lobby,
       });
 
@@ -81,7 +83,9 @@ export default function LandingPage() {
 
       setLobbySession({
         code: response.code,
-        playerName: submittedName,
+        playerId: response.playerId,
+        playerName: response.playerName || submittedName,
+        resumeToken: response.resumeToken,
         lobby: response.lobby,
       });
 
@@ -157,7 +161,7 @@ export default function LandingPage() {
           ) : null}
 
           <form
-            className="rounded-3xl border border-white/15 bg-gradient-to-br from-indigo-950/90 via-slate-900/95 to-violet-950/90 p-5 shadow-2xl shadow-violet-900/40 backdrop-blur md:p-6"
+            className="rounded-3xl border border-white/15 bg-linear-to-br from-indigo-950/90 via-slate-900/95 to-violet-950/90 p-5 shadow-2xl shadow-violet-900/40 backdrop-blur md:p-6"
             onSubmit={handleCreate}
           >
             <h2 className="font-display text-3xl uppercase tracking-wide text-amber-300">
@@ -230,7 +234,7 @@ export default function LandingPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="mt-1 h-12 rounded-xl bg-gradient-to-r from-cyan-300 via-sky-300 to-emerald-300 px-4 text-base font-extrabold uppercase tracking-wide text-slate-900 transition hover:scale-[1.01] hover:from-cyan-200 hover:to-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-1 h-12 rounded-xl bg-linear-to-r from-cyan-300 via-sky-300 to-emerald-300 px-4 text-base font-extrabold uppercase tracking-wide text-slate-900 transition hover:scale-[1.01] hover:from-cyan-200 hover:to-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmitting ? "Creating..." : "Create Lobby"}
               </button>
@@ -238,7 +242,7 @@ export default function LandingPage() {
           </form>
 
           <form
-            className="rounded-3xl border border-white/15 bg-gradient-to-br from-purple-950/95 via-slate-900/95 to-indigo-950/95 p-5 shadow-2xl shadow-fuchsia-900/35 backdrop-blur md:p-6"
+            className="rounded-3xl border border-white/15 bg-linear-to-br from-purple-950/95 via-slate-900/95 to-indigo-950/95 p-5 shadow-2xl shadow-fuchsia-900/35 backdrop-blur md:p-6"
             onSubmit={handleJoin}
           >
             <h2 className="font-display text-3xl uppercase tracking-wide text-fuchsia-300">
@@ -285,7 +289,7 @@ export default function LandingPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="mt-1 h-12 rounded-xl bg-gradient-to-r from-fuchsia-300 via-rose-300 to-amber-200 px-4 text-base font-extrabold uppercase tracking-wide text-slate-900 transition hover:scale-[1.01] hover:from-fuchsia-200 hover:to-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-1 h-12 rounded-xl bg-linear-to-r from-fuchsia-300 via-rose-300 to-amber-200 px-4 text-base font-extrabold uppercase tracking-wide text-slate-900 transition hover:scale-[1.01] hover:from-fuchsia-200 hover:to-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmitting ? "Joining..." : "Join Lobby"}
               </button>

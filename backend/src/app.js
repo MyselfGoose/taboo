@@ -9,6 +9,16 @@ const { logger } = require("./utils/logger");
 const {
   InMemoryLobbyRepository,
 } = require("./repositories/inMemoryLobbyRepository");
+const {
+  SqliteLobbyRepository,
+} = require("./repositories/sqliteLobbyRepository");
+const {
+  InMemorySessionRepository,
+} = require("./repositories/inMemorySessionRepository");
+const {
+  SqliteSessionRepository,
+} = require("./repositories/sqliteSessionRepository");
+const { createSqliteSessionDatabase } = require("./database/sqlite");
 const { LobbyService } = require("./services/lobbyService");
 const { createLobbyController } = require("./controllers/lobbyController");
 const { requestIdMiddleware } = require("./middleware/requestId");
@@ -46,18 +56,45 @@ function createCorsOptions() {
   };
 }
 
+function createRepositories() {
+  const useSqliteDatabase = config.useSqliteSessions || config.useSqliteLobbies;
+
+  if (!useSqliteDatabase) {
+    return {
+      lobbyRepository: new InMemoryLobbyRepository(),
+      sessionRepository: new InMemorySessionRepository(),
+      sqliteDatabase: null,
+    };
+  }
+
+  const { db } = createSqliteSessionDatabase({ config });
+
+  return {
+    lobbyRepository: config.useSqliteLobbies
+      ? new SqliteLobbyRepository({ db })
+      : new InMemoryLobbyRepository(),
+    sessionRepository: config.useSqliteSessions
+      ? new SqliteSessionRepository({ db })
+      : new InMemorySessionRepository(),
+    sqliteDatabase: db,
+  };
+}
+
 function createApp() {
   const app = express();
 
-  const lobbyRepository = new InMemoryLobbyRepository();
+  const { lobbyRepository, sessionRepository, sqliteDatabase } =
+    createRepositories();
   const lobbyService = new LobbyService({
     repository: lobbyRepository,
+    sessionRepository,
     logger,
     config,
   });
 
   const lobbyController = createLobbyController({ lobbyService });
   app.locals.lobbyService = lobbyService;
+  app.locals.sqliteDatabase = sqliteDatabase;
 
   app.set("trust proxy", config.trustProxy);
   app.disable("x-powered-by");
