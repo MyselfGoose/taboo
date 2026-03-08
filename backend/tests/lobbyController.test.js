@@ -29,9 +29,25 @@ test("controller create delegates to service and responds", () => {
     lobbyService: {
       createLobby(payload) {
         calls.push(payload);
-        return { code: "AB12" };
+        return {
+          code: "AB12",
+          hostName: "Alice",
+          members: ["Alice"],
+          settings: { roundCount: 5, roundDurationSeconds: 60 },
+        };
       },
       joinLobby() {},
+      toLobbySnapshot(lobby) {
+        return lobby;
+      },
+      getLobby() {
+        return {
+          code: "AB12",
+          hostName: "Alice",
+          members: ["Alice"],
+          settings: { roundCount: 5, roundDurationSeconds: 60 },
+        };
+      },
     },
   });
 
@@ -45,8 +61,23 @@ test("controller create delegates to service and responds", () => {
 
   assert.equal(nextCalled, false);
   assert.equal(res.statusCode, 201);
-  assert.deepEqual(res.jsonPayload, { code: "AB12" });
-  assert.deepEqual(calls, [{ playerName: "Alice", requestId: "r1" }]);
+  assert.deepEqual(res.jsonPayload, {
+    code: "AB12",
+    lobby: {
+      code: "AB12",
+      hostName: "Alice",
+      members: ["Alice"],
+      settings: { roundCount: 5, roundDurationSeconds: 60 },
+    },
+  });
+  assert.deepEqual(calls, [
+    {
+      playerName: "Alice",
+      roundCount: undefined,
+      roundDurationSeconds: undefined,
+      requestId: "r1",
+    },
+  ]);
 });
 
 test("controller join delegates to service and responds", () => {
@@ -56,6 +87,23 @@ test("controller join delegates to service and responds", () => {
       createLobby() {},
       joinLobby(payload) {
         calls.push(payload);
+        return {
+          code: "AB12",
+          hostName: "Alice",
+          members: ["Alice", "Bob"],
+          settings: { roundCount: 5, roundDurationSeconds: 60 },
+        };
+      },
+      toLobbySnapshot(lobby) {
+        return lobby;
+      },
+      getLobby() {
+        return {
+          code: "AB12",
+          hostName: "Alice",
+          members: ["Alice"],
+          settings: { roundCount: 5, roundDurationSeconds: 60 },
+        };
       },
     },
   });
@@ -69,11 +117,55 @@ test("controller join delegates to service and responds", () => {
   });
 
   assert.equal(nextCalled, false);
-  assert.equal(res.statusCode, 204);
-  assert.equal(res.sent, true);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.jsonPayload, {
+    code: "AB12",
+    lobby: {
+      code: "AB12",
+      hostName: "Alice",
+      members: ["Alice", "Bob"],
+      settings: { roundCount: 5, roundDurationSeconds: 60 },
+    },
+  });
   assert.deepEqual(calls, [
     { playerName: "Bob", lobbyCode: "AB12", requestId: "r2" },
   ]);
+});
+
+test("controller getByCode returns lobby snapshot", () => {
+  const lobbyController = createLobbyController({
+    lobbyService: {
+      createLobby() {},
+      joinLobby() {},
+      getLobby() {
+        return {
+          code: "AB12",
+          hostName: "Alice",
+          members: ["Alice"],
+          settings: { roundCount: 5, roundDurationSeconds: 60 },
+        };
+      },
+      toLobbySnapshot(lobby) {
+        return lobby;
+      },
+    },
+  });
+
+  const req = { params: { code: "AB12" } };
+  const res = createRes();
+
+  lobbyController.getByCode(req, res, () => {});
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.jsonPayload, {
+    code: "AB12",
+    lobby: {
+      code: "AB12",
+      hostName: "Alice",
+      members: ["Alice"],
+      settings: { roundCount: 5, roundDurationSeconds: 60 },
+    },
+  });
 });
 
 test("controller forwards service errors to next", () => {

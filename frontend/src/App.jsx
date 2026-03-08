@@ -1,6 +1,31 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import { createLobby, joinLobby } from "./api/lobbyApi";
+import {
+  createLobby,
+  getLobby,
+  getLobbyWebSocketUrl,
+  joinLobby,
+} from "./api/lobbyApi";
+
+const ROUND_DURATION_OPTIONS = Array.from(
+  { length: 10 },
+  (_, index) => (index + 1) * 30,
+);
+
+function splitIntoTeams(members) {
+  const teamA = [];
+  const teamB = [];
+
+  members.forEach((member, index) => {
+    if (index % 2 === 0) {
+      teamA.push(member);
+    } else {
+      teamB.push(member);
+    }
+  });
+
+  return { teamA, teamB };
+}
 
 function App() {
   const [screen, setScreen] = useState("landing");
@@ -8,9 +33,22 @@ function App() {
   const [createName, setCreateName] = useState("");
   const [joinName, setJoinName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [roundCount, setRoundCount] = useState(5);
+  const [roundDurationSeconds, setRoundDurationSeconds] = useState(60);
   const [lobbyDetails, setLobbyDetails] = useState(null);
+  const [connectionState, setConnectionState] = useState("disconnected");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const socketRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+
+  const teams = useMemo(() => {
+    if (!lobbyDetails?.lobby?.members) {
+      return { teamA: [], teamB: [] };
+    }
+
+    return splitIntoTeams(lobbyDetails.lobby.members);
+  }, [lobbyDetails]);
 
   const handleCodeInput = (event) => {
     const code = event.target.value
@@ -27,15 +65,25 @@ function App() {
       return;
     }
 
+    if (!Number.isInteger(Number(roundCount)) || Number(roundCount) < 1) {
+      setErrorMessage("Round count must be a number greater than 0.");
+      return;
+    }
+
     setErrorMessage("");
     setIsSubmitting(true);
 
     try {
-      const result = await createLobby(name);
+      const result = await createLobby({
+        name,
+        roundCount: Number(roundCount),
+        roundDurationSeconds: Number(roundDurationSeconds),
+      });
       setLobbyDetails({
         role: "host",
         playerName: name,
         code: result.code,
+        lobby: result.lobby,
       });
       setScreen("lobby");
     } catch (error) {
@@ -58,11 +106,12 @@ function App() {
     setIsSubmitting(true);
 
     try {
-      await joinLobby(name, code);
+      const result = await joinLobby(name, code);
       setLobbyDetails({
         role: "member",
         playerName: name,
         code,
+        lobby: result.lobby,
       });
       setScreen("lobby");
     } catch (error) {
@@ -73,8 +122,138 @@ function App() {
   };
 
   const handleBackToLanding = () => {
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
     setScreen("landing");
     setErrorMessage("");
+    setConnectionState("disconnected");
+  };
+
+  useEffect(() => {
+    if (
+      screen !== "lobby" ||
+      !lobbyDetails?.code ||
+      !lobbyDetails?.playerName
+    ) {
+      return undefined;
+    }
+
+    let isActive = true;
+    let reconnectAttempts = 0;
+
+    const connect = () => {
+      if (!isActive) {
+        return;
+      }
+
+      setConnectionState(
+        reconnectAttempts === 0 ? "connecting" : "reconnecting",
+      );
+
+      const ws = new WebSocket(getLobbyWebSocketUrl());
+      socketRef.current = ws;
+
+      ws.addEventListener("open", () => {
+        reconnectAttempts = 0;
+        setConnectionState("connected");
+        ws.send(
+          JSON.stringify({
+            type: "subscribe",
+            code: lobbyDetails.code,
+            name: lobbyDetails.playerName,
+          }),
+        );
+      });
+
+      ws.addEventListener("message", async (event) => {
+        let message;
+        try {
+          message = JSON.parse(event.data);
+        } catch (_error) {
+          return;
+        }
+
+        if (message.type === "lobby_state" || message.type === "subscribed") {
+          setLobbyDetails((current) => {
+            if (!current) {
+              return current;
+            }
+
+            return {
+              ...current,
+              lobby: message.lobby,
+            };
+          });
+          return;
+        }
+
+        if (message.type === "error") {
+          setErrorMessage(message.message || "Realtime connection error.");
+
+          try {
+            const fallback = await getLobby(lobbyDetails.code);
+            setLobbyDetails((current) => {
+              if (!current) {
+                return current;
+              }
+
+              return {
+                ...current,
+                lobby: fallback.lobby,
+              };
+            });
+          } catch (_fallbackError) {
+            // Keep UI stable even if fallback fetch fails.
+          }
+        }
+      });
+
+      ws.addEventListener("close", () => {
+        if (!isActive) {
+          return;
+        }
+
+        setConnectionState("disconnected");
+        reconnectAttempts += 1;
+        const retryDelayMs = Math.min(1200 * reconnectAttempts, 6000);
+        reconnectTimerRef.current = setTimeout(connect, retryDelayMs);
+      });
+    };
+
+    connect();
+
+    return () => {
+      isActive = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+    };
+  }, [screen, lobbyDetails?.code, lobbyDetails?.playerName]);
+
+  const connectionLabel =
+    connectionState === "connected"
+      ? "Realtime connected"
+      : connectionState === "connecting"
+        ? "Connecting realtime"
+        : connectionState === "reconnecting"
+          ? "Reconnecting"
+          : "Offline";
+
+  const lobbySettings = lobbyDetails?.lobby?.settings || {
+    roundCount: roundCount,
+    roundDurationSeconds,
   };
 
   if (screen === "lobby" && lobbyDetails) {
@@ -104,19 +283,37 @@ function App() {
             <strong>{lobbyDetails.code}</strong>
           </section>
 
+          <section className="settings-strip" aria-label="Lobby settings">
+            <p>Rounds: {lobbySettings.roundCount}</p>
+            <p>Round Time: {lobbySettings.roundDurationSeconds}s</p>
+            <p className={`connection-pill ${connectionState}`}>
+              {connectionLabel}
+            </p>
+          </section>
+
           <section className="teams-grid" aria-label="Teams preview">
             <article className="team-card">
               <h2>Team A</h2>
               <ul>
-                <li>{lobbyDetails.playerName}</li>
-                <li>Player Slot</li>
+                {teams.teamA.length ? (
+                  teams.teamA.map((member) => (
+                    <li key={`a-${member}`}>{member}</li>
+                  ))
+                ) : (
+                  <li>Waiting for players...</li>
+                )}
               </ul>
             </article>
             <article className="team-card">
               <h2>Team B</h2>
               <ul>
-                <li>Player Slot</li>
-                <li>Player Slot</li>
+                {teams.teamB.length ? (
+                  teams.teamB.map((member) => (
+                    <li key={`b-${member}`}>{member}</li>
+                  ))
+                ) : (
+                  <li>Waiting for players...</li>
+                )}
               </ul>
             </article>
           </section>
@@ -190,6 +387,31 @@ function App() {
                 value={createName}
                 onChange={(event) => setCreateName(event.target.value)}
               />
+
+              <label htmlFor="round-count">Rounds</label>
+              <input
+                id="round-count"
+                type="number"
+                min={1}
+                max={20}
+                value={roundCount}
+                onChange={(event) => setRoundCount(event.target.value)}
+              />
+
+              <label htmlFor="round-duration">Round Time</label>
+              <select
+                id="round-duration"
+                value={roundDurationSeconds}
+                onChange={(event) =>
+                  setRoundDurationSeconds(Number(event.target.value))
+                }
+              >
+                {ROUND_DURATION_OPTIONS.map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {seconds} seconds
+                  </option>
+                ))}
+              </select>
 
               <button
                 type="button"

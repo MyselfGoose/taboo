@@ -57,6 +57,7 @@ function createApp() {
   });
 
   const lobbyController = createLobbyController({ lobbyService });
+  app.locals.lobbyService = lobbyService;
 
   app.set("trust proxy", config.trustProxy);
   app.disable("x-powered-by");

@@ -7,6 +7,44 @@ import App from "./App";
 describe("App lobby flow", () => {
   beforeEach(() => {
     global.fetch = vi.fn();
+
+    class MockWebSocket {
+      static instances = [];
+
+      constructor() {
+        this.listeners = new Map();
+        MockWebSocket.instances.push(this);
+        setTimeout(() => {
+          this.dispatch("open");
+        }, 0);
+      }
+
+      addEventListener(type, listener) {
+        if (!this.listeners.has(type)) {
+          this.listeners.set(type, new Set());
+        }
+        this.listeners.get(type).add(listener);
+      }
+
+      removeEventListener(type, listener) {
+        this.listeners.get(type)?.delete(listener);
+      }
+
+      dispatch(type, event = {}) {
+        const handlers = this.listeners.get(type) || [];
+        for (const handler of handlers) {
+          handler(event);
+        }
+      }
+
+      send() {}
+
+      close() {
+        this.dispatch("close");
+      }
+    }
+
+    global.WebSocket = MockWebSocket;
   });
 
   afterEach(() => {
@@ -40,7 +78,15 @@ describe("App lobby flow", () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       headers: new Headers({ "content-type": "application/json" }),
-      json: async () => ({ code: "AB12" }),
+      json: async () => ({
+        code: "AB12",
+        lobby: {
+          code: "AB12",
+          members: ["Alice"],
+          memberCount: 1,
+          settings: { roundCount: 5, roundDurationSeconds: 60 },
+        },
+      }),
     });
 
     render(<App />);
@@ -55,7 +101,14 @@ describe("App lobby flow", () => {
 
     expect(global.fetch).toHaveBeenCalledWith(
       "http://127.0.0.1:3000/api/lobbies",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "Alice",
+          roundCount: 5,
+          roundDurationSeconds: 60,
+        }),
+      }),
     );
   });
 
@@ -77,5 +130,18 @@ describe("App lobby flow", () => {
     await waitFor(() => {
       expect(screen.getByText(/Lobby not found/)).toBeInTheDocument();
     });
+  });
+
+  it("shows rounds and round-time options on create panel", () => {
+    render(<App />);
+
+    expect(screen.getByLabelText("Rounds")).toBeInTheDocument();
+    expect(screen.getByLabelText("Round Time")).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "30 seconds" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "300 seconds" }),
+    ).toBeInTheDocument();
   });
 });

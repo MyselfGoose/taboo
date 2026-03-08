@@ -2,6 +2,11 @@ const { AppError } = require("./appError");
 
 const NAME_PATTERN = /^[A-Za-z0-9 _-]{2,24}$/;
 const CODE_PATTERN = /^[A-Z0-9]{4}$/;
+const MIN_ROUNDS = 1;
+const MAX_ROUNDS = 20;
+const MIN_ROUND_SECONDS = 30;
+const MAX_ROUND_SECONDS = 300;
+const ROUND_SECONDS_STEP = 30;
 
 function normalizePlayerName(input) {
   const name =
@@ -32,7 +37,62 @@ function normalizeLobbyCode(input) {
   return code;
 }
 
+function normalizeRoundCount(input) {
+  const roundCount = Number(input);
+
+  if (!Number.isInteger(roundCount)) {
+    throw new AppError(
+      "Round count must be an integer.",
+      400,
+      "INVALID_ROUND_COUNT",
+    );
+  }
+
+  if (roundCount < MIN_ROUNDS || roundCount > MAX_ROUNDS) {
+    throw new AppError(
+      `Round count must be between ${MIN_ROUNDS} and ${MAX_ROUNDS}.`,
+      400,
+      "INVALID_ROUND_COUNT",
+    );
+  }
+
+  return roundCount;
+}
+
+function normalizeRoundDurationSeconds(input) {
+  const roundDurationSeconds = Number(input);
+
+  if (!Number.isInteger(roundDurationSeconds)) {
+    throw new AppError(
+      "Round duration must be an integer number of seconds.",
+      400,
+      "INVALID_ROUND_DURATION",
+    );
+  }
+
+  if (
+    roundDurationSeconds < MIN_ROUND_SECONDS ||
+    roundDurationSeconds > MAX_ROUND_SECONDS ||
+    roundDurationSeconds % ROUND_SECONDS_STEP !== 0
+  ) {
+    throw new AppError(
+      `Round duration must be ${MIN_ROUND_SECONDS}-${MAX_ROUND_SECONDS} seconds in ${ROUND_SECONDS_STEP}s increments.`,
+      400,
+      "INVALID_ROUND_DURATION",
+    );
+  }
+
+  return roundDurationSeconds;
+}
+
 module.exports = {
   normalizePlayerName,
   normalizeLobbyCode,
+  normalizeRoundCount,
+  normalizeRoundDurationSeconds,
+  MIN_ROUNDS,
+  MAX_ROUNDS,
+  MIN_ROUND_SECONDS,
+  MAX_ROUND_SECONDS,
+  ROUND_SECONDS_STEP,
 };

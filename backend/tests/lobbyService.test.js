@@ -19,6 +19,8 @@ function createService(overrides = {}) {
     maxActiveLobbies: 100,
     lobbyCodeLength: 4,
     lobbyMaxGenerateAttempts: 100,
+    defaultRoundCount: 5,
+    defaultRoundDurationSeconds: 60,
     ...overrides.config,
   };
 
@@ -33,6 +35,22 @@ test("createLobby creates lobby with unique code and host member", () => {
   assert.equal(lobby.code.length, 4);
   assert.deepEqual(lobby.members, ["Alice"]);
   assert.equal(lobby.hostName, "Alice");
+  assert.equal(lobby.settings.roundCount, 5);
+  assert.equal(lobby.settings.roundDurationSeconds, 60);
+});
+
+test("createLobby accepts custom rounds and duration settings", () => {
+  const service = createService();
+
+  const lobby = service.createLobby({
+    playerName: "Alice",
+    roundCount: 8,
+    roundDurationSeconds: 120,
+    requestId: "r1",
+  });
+
+  assert.equal(lobby.settings.roundCount, 8);
+  assert.equal(lobby.settings.roundDurationSeconds, 120);
 });
 
 test("createLobby enforces active lobby capacity", () => {
@@ -111,4 +129,22 @@ test("joinLobby throws when lobby code is unknown", () => {
       }),
     (error) => error instanceof AppError && error.code === "LOBBY_NOT_FOUND",
   );
+});
+
+test("removeLobbyMember removes matching member from lobby", () => {
+  const service = createService();
+  const lobby = service.createLobby({ playerName: "Alice", requestId: "r1" });
+  service.joinLobby({
+    playerName: "Bob",
+    lobbyCode: lobby.code,
+    requestId: "r2",
+  });
+
+  const updated = service.removeLobbyMember({
+    playerName: "Bob",
+    lobbyCode: lobby.code,
+    requestId: "r3",
+  });
+
+  assert.deepEqual(updated.members, ["Alice"]);
 });

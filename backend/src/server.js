@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const https = require("node:https");
 
 const { createApp, config, logger } = require("./app");
+const { createLobbyRealtimeHub } = require("./realtime/lobbyRealtimeHub");
 
 function createNetworkServer(app) {
   const certPath = config.sslCertPath;
@@ -54,12 +55,16 @@ function configureTimeouts(server) {
   server.headersTimeout = 66000;
 }
 
-function setupGracefulShutdown(server) {
+function setupGracefulShutdown(server, realtimeHub) {
   const shutdown = (signal) => {
     logger.info("Shutdown signal received", {
       event: "shutdown_signal",
       signal,
     });
+
+    if (realtimeHub) {
+      realtimeHub.close();
+    }
 
     server.close((error) => {
       if (error) {
@@ -92,9 +97,14 @@ function setupGracefulShutdown(server) {
 function startServer() {
   const app = createApp();
   const server = createNetworkServer(app);
+  const realtimeHub = createLobbyRealtimeHub({
+    server,
+    lobbyService: app.locals.lobbyService,
+    logger,
+  });
   configureTimeouts(server);
-  setupGracefulShutdown(server);
-  return { app, server };
+  setupGracefulShutdown(server, realtimeHub);
+  return { app, server, realtimeHub };
 }
 
 module.exports = {

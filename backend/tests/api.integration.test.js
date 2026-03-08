@@ -29,11 +29,13 @@ test("POST /api/lobbies creates lobby and returns code payload", async () => {
 
   const response = await request(app)
     .post("/api/lobbies")
-    .send({ name: "Alice" })
+    .send({ name: "Alice", roundCount: 6, roundDurationSeconds: 120 })
     .set("Content-Type", "application/json");
 
   assert.equal(response.status, 201);
   assert.match(response.body.code, /^[A-Z0-9]{4}$/);
+  assert.equal(response.body.lobby.settings.roundCount, 6);
+  assert.equal(response.body.lobby.settings.roundDurationSeconds, 120);
 });
 
 test("production mode redirects non-HTTPS requests", async () => {
@@ -85,8 +87,9 @@ test("POST /api/lobbies/join joins an existing lobby", async () => {
     .send({ name: "Bob", code: createResponse.body.code })
     .set("Content-Type", "application/json");
 
-  assert.equal(joinResponse.status, 204);
-  assert.equal(joinResponse.text, "");
+  assert.equal(joinResponse.status, 200);
+  assert.equal(joinResponse.body.lobby.memberCount, 2);
+  assert.deepEqual(joinResponse.body.lobby.members, ["Host", "Bob"]);
 });
 
 test("POST /api/lobbies creates unique codes across consecutive calls", async () => {
@@ -104,6 +107,33 @@ test("POST /api/lobbies creates unique codes across consecutive calls", async ()
   assert.equal(first.status, 201);
   assert.equal(second.status, 201);
   assert.notEqual(first.body.code, second.body.code);
+});
+
+test("GET /api/lobbies/:code returns lobby snapshot", async () => {
+  const app = createApp();
+
+  const created = await request(app)
+    .post("/api/lobbies")
+    .send({ name: "Alice" })
+    .set("Content-Type", "application/json");
+
+  const fetched = await request(app).get(`/api/lobbies/${created.body.code}`);
+
+  assert.equal(fetched.status, 200);
+  assert.equal(fetched.body.code, created.body.code);
+  assert.deepEqual(fetched.body.lobby.members, ["Alice"]);
+});
+
+test("POST /api/lobbies rejects invalid round settings", async () => {
+  const app = createApp();
+
+  const response = await request(app)
+    .post("/api/lobbies")
+    .send({ name: "Alice", roundCount: 0, roundDurationSeconds: 75 })
+    .set("Content-Type", "application/json");
+
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "INVALID_ROUND_COUNT");
 });
 
 test("POST /api/lobbies/join returns 400 for malformed code", async () => {

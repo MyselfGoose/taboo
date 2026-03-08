@@ -69,6 +69,11 @@ const config = {
     process.env.LOBBY_CODE_MAX_ATTEMPTS,
     50,
   ),
+  defaultRoundCount: parsePositiveInt(process.env.DEFAULT_ROUND_COUNT, 5),
+  defaultRoundDurationSeconds: parsePositiveInt(
+    process.env.DEFAULT_ROUND_DURATION_SECONDS,
+    60,
+  ),
   lobbyTtlMs: parsePositiveInt(process.env.LOBBY_TTL_MINUTES, 120) * 60 * 1000,
   maxActiveLobbies: parsePositiveInt(process.env.MAX_ACTIVE_LOBBIES, 20000),
 };

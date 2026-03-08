@@ -3,6 +3,8 @@ const { generateUniqueCode } = require("../utils/codeGenerator");
 const {
   normalizeLobbyCode,
   normalizePlayerName,
+  normalizeRoundCount,
+  normalizeRoundDurationSeconds,
 } = require("../utils/validation");
 
 class LobbyService {
@@ -12,7 +14,7 @@ class LobbyService {
     this.config = config;
   }
 
-  createLobby({ playerName, requestId }) {
+  createLobby({ playerName, roundCount, roundDurationSeconds, requestId }) {
     const now = Date.now();
     this.repository.cleanupExpired(now, this.config.lobbyTtlMs);
 
@@ -25,6 +27,12 @@ class LobbyService {
     }
 
     const hostName = normalizePlayerName(playerName);
+    const normalizedRoundCount = normalizeRoundCount(
+      roundCount ?? this.config.defaultRoundCount,
+    );
+    const normalizedRoundDurationSeconds = normalizeRoundDurationSeconds(
+      roundDurationSeconds ?? this.config.defaultRoundDurationSeconds,
+    );
 
     const code = generateUniqueCode({
       length: this.config.lobbyCodeLength,
@@ -36,6 +44,10 @@ class LobbyService {
       code,
       hostName,
       members: [hostName],
+      settings: {
+        roundCount: normalizedRoundCount,
+        roundDurationSeconds: normalizedRoundDurationSeconds,
+      },
       createdAt: now,
       updatedAt: now,
     };
@@ -49,6 +61,17 @@ class LobbyService {
       hostName: lobby.hostName,
       memberCount: lobby.members.length,
     });
+
+    return lobby;
+  }
+
+  getLobby({ lobbyCode }) {
+    const code = normalizeLobbyCode(lobbyCode);
+    const lobby = this.repository.getByCode(code);
+
+    if (!lobby) {
+      throw new AppError("Lobby not found.", 404, "LOBBY_NOT_FOUND");
+    }
 
     return lobby;
   }
@@ -84,6 +107,50 @@ class LobbyService {
     });
 
     return lobby;
+  }
+
+  removeLobbyMember({ playerName, lobbyCode, requestId }) {
+    const now = Date.now();
+    const memberName = normalizePlayerName(playerName);
+    const code = normalizeLobbyCode(lobbyCode);
+    const lobby = this.repository.getByCode(code);
+
+    if (!lobby) {
+      return null;
+    }
+
+    const previousLength = lobby.members.length;
+    lobby.members = lobby.members.filter(
+      (existingName) => existingName.toLowerCase() !== memberName.toLowerCase(),
+    );
+
+    if (lobby.members.length !== previousLength) {
+      lobby.updatedAt = now;
+      this.logger.info("Lobby member removed", {
+        requestId,
+        event: "lobby_member_left",
+        code,
+        leftName: memberName,
+        memberCount: lobby.members.length,
+      });
+    }
+
+    return lobby;
+  }
+
+  toLobbySnapshot(lobby) {
+    return {
+      code: lobby.code,
+      hostName: lobby.hostName,
+      members: [...lobby.members],
+      settings: {
+        roundCount: lobby.settings.roundCount,
+        roundDurationSeconds: lobby.settings.roundDurationSeconds,
+      },
+      memberCount: lobby.members.length,
+      createdAt: lobby.createdAt,
+      updatedAt: lobby.updatedAt,
+    };
   }
 }
 

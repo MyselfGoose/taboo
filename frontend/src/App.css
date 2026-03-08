@@ -147,11 +147,32 @@ input {
     background-color 200ms ease;
 }
 
+select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.86rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 1rem;
+  min-height: 2.9rem;
+  padding: 0.65rem 0.82rem;
+  transition:
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+
 input::placeholder {
   color: #90a0b7;
 }
 
 input:focus-visible {
+  outline: none;
+  border-color: #52d3bf;
+  background: rgba(82, 211, 191, 0.08);
+}
+
+select:focus-visible {
   outline: none;
   border-color: #52d3bf;
   background: rgba(82, 211, 191, 0.08);
@@ -234,6 +255,47 @@ input:focus-visible {
   letter-spacing: 0.2em;
   font-size: clamp(1.8rem, 11vw, 2.3rem);
   color: #f8fbff;
+}
+
+.settings-strip {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.7rem 0.85rem;
+}
+
+.settings-strip p {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #d4deed;
+}
+
+.connection-pill {
+  display: inline-block;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.connection-pill.connected {
+  color: #d5fff5;
+  background: rgba(82, 211, 191, 0.25);
+}
+
+.connection-pill.connecting,
+.connection-pill.reconnecting {
+  color: #fff0cc;
+  background: rgba(255, 202, 92, 0.28);
+}
+
+.connection-pill.disconnected {
+  color: #ffd8d8;
+  background: rgba(255, 99, 132, 0.26);
 }
 
 .teams-grid {
@@ -367,6 +429,7 @@ input:focus-visible {
 
   .mode-panel label,
   .mode-panel input,
+  .mode-panel select,
   .mode-panel .cta-btn {
     grid-column: 1 / -1;
   }
