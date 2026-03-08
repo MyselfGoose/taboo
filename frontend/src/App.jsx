@@ -12,6 +12,25 @@ const ROUND_DURATION_OPTIONS = Array.from(
   (_, index) => (index + 1) * 30,
 );
 
+const DEMO_CARDS = [
+  {
+    guess: "Volcano",
+    taboo: ["Lava", "Erupt", "Mountain", "Ash", "Magma"],
+  },
+  {
+    guess: "Astronaut",
+    taboo: ["Space", "Rocket", "Moon", "Suit", "NASA"],
+  },
+  {
+    guess: "Piano",
+    taboo: ["Music", "Keys", "Instrument", "Play", "Keyboard"],
+  },
+  {
+    guess: "Pirate",
+    taboo: ["Ship", "Treasure", "Ocean", "Captain", "Parrot"],
+  },
+];
+
 function splitIntoTeams(members) {
   const teamA = [];
   const teamB = [];
@@ -51,6 +70,11 @@ function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tabTag] = useState(() => buildTabTag());
+  const [activeRound, setActiveRound] = useState(1);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [activeTeam, setActiveTeam] = useState("A");
+  const [cardIndex, setCardIndex] = useState(0);
+  const [teamScores, setTeamScores] = useState({ A: 0, B: 0 });
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
 
@@ -168,6 +192,9 @@ function App() {
     setScreen("landing");
     setErrorMessage("");
     setConnectionState("disconnected");
+    setActiveRound(1);
+    setCardIndex(0);
+    setTeamScores({ A: 0, B: 0 });
   };
 
   const sendLobbyAction = (payload) => {
@@ -315,6 +342,245 @@ function App() {
 
   const getPlayersForTeam = (teamName) =>
     players.filter((player) => player.team === teamName);
+
+  const activeCard = DEMO_CARDS[cardIndex % DEMO_CARDS.length];
+
+  useEffect(() => {
+    if (screen !== "lobby") {
+      return;
+    }
+
+    if (!lobbyDetails?.lobby?.allReady) {
+      return;
+    }
+
+    setActiveRound(1);
+    setActiveTeam("A");
+    setCardIndex(0);
+    setSecondsLeft(lobbyDetails.lobby.settings?.roundDurationSeconds || 60);
+    setScreen("game");
+  }, [
+    screen,
+    lobbyDetails?.lobby?.allReady,
+    lobbyDetails?.lobby?.settings?.roundDurationSeconds,
+  ]);
+
+  useEffect(() => {
+    if (screen !== "game") {
+      return;
+    }
+
+    if (secondsLeft <= 0) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setSecondsLeft((previous) => Math.max(previous - 1, 0));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [screen, secondsLeft]);
+
+  const handleNextCard = () => {
+    setCardIndex((previous) => previous + 1);
+  };
+
+  const handleAwardPoint = () => {
+    setTeamScores((previous) => ({
+      ...previous,
+      [activeTeam]: previous[activeTeam] + 1,
+    }));
+    handleNextCard();
+  };
+
+  const handlePenalty = () => {
+    setTeamScores((previous) => ({
+      ...previous,
+      [activeTeam]: Math.max(0, previous[activeTeam] - 1),
+    }));
+    handleNextCard();
+  };
+
+  const handleNextTurn = () => {
+    const nextTeam = activeTeam === "A" ? "B" : "A";
+    const roundLimit = lobbySettings.roundCount || 1;
+
+    setActiveTeam(nextTeam);
+    setSecondsLeft(lobbySettings.roundDurationSeconds || 60);
+    setCardIndex((previous) => previous + 1);
+
+    if (nextTeam === "A") {
+      setActiveRound((previousRound) =>
+        Math.min(previousRound + 1, Math.max(roundLimit, 1)),
+      );
+    }
+  };
+
+  if (screen === "game" && lobbyDetails) {
+    const teamAPlayers = getPlayersForTeam("A");
+    const teamBPlayers = getPlayersForTeam("B");
+
+    return (
+      <main className="page-shell game-shell">
+        <div className="bg-layer bg-layer-one" aria-hidden="true" />
+        <div className="bg-layer bg-layer-two" aria-hidden="true" />
+
+        <section className="game-stage" aria-label="Taboo game page">
+          <header className="game-topbar">
+            <div>
+              <p className="eyebrow">Game In Progress</p>
+              <h1>
+                <span>TABOO</span>
+              </h1>
+            </div>
+            <div className="identity-strip compact">
+              <p>
+                You: <strong>{lobbyDetails.playerName}</strong>
+              </p>
+              <p>
+                Tab: <strong>{tabTag}</strong>
+              </p>
+            </div>
+          </header>
+
+          <section className="game-meta-grid">
+            <article className="meta-card timer-card">
+              <p>Round</p>
+              <strong>
+                {activeRound}/{lobbySettings.roundCount}
+              </strong>
+            </article>
+            <article className="meta-card timer-card">
+              <p>Turn Timer</p>
+              <strong>{secondsLeft}s</strong>
+            </article>
+            <article className="meta-card active-team-card">
+              <p>Current Team</p>
+              <strong>Team {activeTeam}</strong>
+            </article>
+          </section>
+
+          <section className="scoreboard" aria-label="Team scores">
+            <article
+              className={`score-tile ${activeTeam === "A" ? "active" : ""}`}
+            >
+              <p>Team A</p>
+              <strong>{teamScores.A}</strong>
+            </article>
+            <article
+              className={`score-tile ${activeTeam === "B" ? "active" : ""}`}
+            >
+              <p>Team B</p>
+              <strong>{teamScores.B}</strong>
+            </article>
+          </section>
+
+          <section className="taboo-card" aria-label="Current taboo card">
+            <p className="eyebrow">Guess Word</p>
+            <h2>{activeCard.guess}</h2>
+            <p className="eyebrow">Forbidden Words</p>
+            <ul>
+              {activeCard.taboo.map((word) => (
+                <li key={word}>{word}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="turn-controls" aria-label="Round actions">
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={handleNextCard}
+            >
+              Skip Card
+            </button>
+            <button
+              type="button"
+              className="cta-btn"
+              onClick={handleAwardPoint}
+            >
+              Correct (+1)
+            </button>
+            <button
+              type="button"
+              className="ghost-btn danger"
+              onClick={handlePenalty}
+            >
+              Taboo (-1)
+            </button>
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={handleNextTurn}
+            >
+              End Turn
+            </button>
+          </section>
+
+          <section className="teams-grid" aria-label="Game teams">
+            <article className="team-card">
+              <h2>Team A</h2>
+              <ul>
+                {teamAPlayers.map((player) => (
+                  <li
+                    key={`ga-${player.name}`}
+                    className={
+                      player.name.toLowerCase() ===
+                      String(lobbyDetails.playerName).toLowerCase()
+                        ? "current-player"
+                        : ""
+                    }
+                  >
+                    <span>{player.name}</span>
+                    <span
+                      className={
+                        player.ready ? "ready-tag ready" : "ready-tag waiting"
+                      }
+                    >
+                      {player.ready ? "Ready" : "Not ready"}
+                    </span>
+                    {player.name.toLowerCase() ===
+                    String(lobbyDetails.playerName).toLowerCase() ? (
+                      <span className="you-tag">You</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </article>
+            <article className="team-card">
+              <h2>Team B</h2>
+              <ul>
+                {teamBPlayers.map((player) => (
+                  <li
+                    key={`gb-${player.name}`}
+                    className={
+                      player.name.toLowerCase() ===
+                      String(lobbyDetails.playerName).toLowerCase()
+                        ? "current-player"
+                        : ""
+                    }
+                  >
+                    <span>{player.name}</span>
+                    <span
+                      className={
+                        player.ready ? "ready-tag ready" : "ready-tag waiting"
+                      }
+                    >
+                      {player.ready ? "Ready" : "Not ready"}
+                    </span>
+                    {player.name.toLowerCase() ===
+                    String(lobbyDetails.playerName).toLowerCase() ? (
+                      <span className="you-tag">You</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </section>
+        </section>
+      </main>
+    );
+  }
 
   if (screen === "lobby" && lobbyDetails) {
     return (

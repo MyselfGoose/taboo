@@ -229,6 +229,136 @@ select:focus-visible {
   gap: 1rem;
 }
 
+.game-shell {
+  align-items: start;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.game-stage {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 56rem);
+  margin-inline: auto;
+  border-radius: 1.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(155deg, #0f1825 0%, #1b2434 100%);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.38);
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.game-topbar {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.identity-strip.compact {
+  gap: 0.2rem;
+}
+
+.game-meta-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.meta-card {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.6rem;
+}
+
+.meta-card p {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #b8c8de;
+}
+
+.meta-card strong {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 1.1rem;
+  color: #f7fbff;
+}
+
+.active-team-card strong {
+  color: #ffdd92;
+}
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.score-tile {
+  border-radius: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.65rem;
+}
+
+.score-tile p {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #c7d5e8;
+}
+
+.score-tile strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.55rem;
+  color: #f8fbff;
+}
+
+.score-tile.active {
+  border-color: rgba(255, 202, 92, 0.55);
+  background: rgba(255, 202, 92, 0.18);
+}
+
+.taboo-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 122, 89, 0.16),
+    rgba(58, 134, 255, 0.16)
+  );
+  padding: 0.85rem;
+}
+
+.taboo-card h2 {
+  margin: 0.2rem 0 0.55rem;
+  font-size: clamp(1.8rem, 9vw, 2.5rem);
+  color: #fff5e8;
+}
+
+.taboo-card ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  color: #e6efff;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.turn-controls {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+.ghost-btn.danger {
+  border-color: rgba(255, 99, 132, 0.45);
+  color: #ffdbe3;
+}
+
 .code-showcase {
   border-radius: 1rem;
   border: 1px dashed rgba(82, 211, 191, 0.55);
@@ -511,6 +641,25 @@ select:focus-visible {
 
   .lobby-actions {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .game-shell {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+
+  .game-stage {
+    border-radius: 1.8rem;
+    padding: 1.3rem;
+  }
+
+  .game-topbar {
+    grid-template-columns: 1fr auto;
+    align-items: start;
+  }
+
+  .turn-controls {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
