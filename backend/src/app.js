@@ -1,0 +1,138 @@
+const express = require("express");
+const helmet = require("helmet");
+const compression = require("compression");
+const cors = require("cors");
+const { rateLimit } = require("express-rate-limit");
+
+const { config } = require("./config/env");
+const { logger } = require("./utils/logger");
+const {
+  InMemoryLobbyRepository,
+} = require("./repositories/inMemoryLobbyRepository");
+const { LobbyService } = require("./services/lobbyService");
+const { createLobbyController } = require("./controllers/lobbyController");
+const { requestIdMiddleware } = require("./middleware/requestId");
+const { requestLogger } = require("./middleware/requestLogger");
+const { errorHandler } = require("./middleware/errorHandler");
+const { notFoundMiddleware } = require("./middleware/notFound");
+const { createHealthRouter } = require("./routes/healthRoutes");
+const { createLobbyRouter } = require("./routes/lobbyRoutes");
+
+function createCorsOptions() {
+  return {
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (!config.isProduction) {
+        callback(null, true);
+        return;
+      }
+
+      if (
+        config.allowedOrigins.includes("*") ||
+        config.allowedOrigins.includes(origin)
+      ) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Origin not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    optionsSuccessStatus: 204,
+  };
+}
+
+function createApp() {
+  const app = express();
+
+  const lobbyRepository = new InMemoryLobbyRepository();
+  const lobbyService = new LobbyService({
+    repository: lobbyRepository,
+    logger,
+    config,
+  });
+
+  const lobbyController = createLobbyController({ lobbyService });
+
+  app.set("trust proxy", config.trustProxy);
+  app.disable("x-powered-by");
+
+  app.use(
+    helmet({
+      hsts: config.isProduction,
+    }),
+  );
+  app.use(cors(createCorsOptions()));
+  app.use(compression());
+  app.use(express.json({ limit: "1mb" }));
+
+  app.use(requestIdMiddleware);
+  app.use(requestLogger({ logger }));
+
+  app.use((req, res, next) => {
+    if (!config.isProduction) {
+      next();
+      return;
+    }
+
+    if (req.path === "/health" || req.path === "/ready") {
+      next();
+      return;
+    }
+
+    const forwardedProto = req.get("x-forwarded-proto");
+    const firstForwardedProto = forwardedProto
+      ? forwardedProto.split(",")[0].trim()
+      : undefined;
+    const isHttps = req.secure || firstForwardedProto === "https";
+
+    if (isHttps) {
+      next();
+      return;
+    }
+
+    const host = req.get("host");
+    if (!host) {
+      res
+        .status(400)
+        .json({ error: "Invalid Host header", code: "INVALID_HOST" });
+      return;
+    }
+
+    res.redirect(308, `https://${host}${req.originalUrl}`);
+  });
+
+  app.use(createHealthRouter({ config }));
+
+  const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  const lobbyLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  app.use("/api", apiLimiter);
+  app.use("/api", lobbyLimiter, createLobbyRouter({ lobbyController }));
+
+  app.use(notFoundMiddleware);
+  app.use(errorHandler({ logger }));
+
+  return app;
+}
+
+module.exports = {
+  createApp,
+  config,
+  logger,
+};

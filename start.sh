@@ -177,6 +177,33 @@ wait_for_http() {
   return 1
 }
 
+wait_for_http_any() {
+  local label="$1"
+  local timeout_seconds="$2"
+  shift 2
+  local urls=("$@")
+
+  if ! command -v curl >/dev/null 2>&1; then
+    log_warn "curl not found; skipping readiness check for $label"
+    return 0
+  fi
+
+  local end_time=$((SECONDS + timeout_seconds))
+  while ((SECONDS < end_time)); do
+    local url
+    for url in "${urls[@]}"; do
+      if curl --silent --fail --max-time 2 "$url" >/dev/null 2>&1; then
+        log_info "$label is ready at $url"
+        return 0
+      fi
+    done
+    sleep 1
+  done
+
+  log_error "$label did not become ready within ${timeout_seconds}s (tried: ${urls[*]})"
+  return 1
+}
+
 cleanup() {
   local exit_code=$?
 
@@ -321,7 +348,10 @@ main() {
   fi
 
   if [[ "$RUN_FRONTEND" == true ]]; then
-    wait_for_http "http://127.0.0.1:${FRONTEND_PORT}" "Frontend" 40
+    wait_for_http_any "Frontend" 40 \
+      "http://localhost:${FRONTEND_PORT}" \
+      "http://127.0.0.1:${FRONTEND_PORT}" \
+      "http://[::1]:${FRONTEND_PORT}"
   fi
 
   if [[ "$RUN_BACKEND" == true ]]; then
@@ -329,7 +359,7 @@ main() {
   fi
 
   if [[ "$RUN_FRONTEND" == true ]]; then
-    log_info "Frontend URL: http://127.0.0.1:${FRONTEND_PORT}"
+    log_info "Frontend URL: http://localhost:${FRONTEND_PORT}"
   fi
 
   log_info "Startup checks passed. Press Ctrl+C to stop services."

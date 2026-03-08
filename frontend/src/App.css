@@ -157,33 +157,6 @@ input:focus-visible {
   background: rgba(82, 211, 191, 0.08);
 }
 
-.code-preview {
-  border-radius: 0.9rem;
-  border: 1px dashed rgba(255, 202, 92, 0.55);
-  background: linear-gradient(
-    90deg,
-    rgba(255, 202, 92, 0.15),
-    rgba(255, 122, 89, 0.12)
-  );
-  padding: 0.75rem 0.85rem;
-}
-
-.code-preview p {
-  margin: 0;
-  font-size: 0.76rem;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: #f4dab3;
-}
-
-.code-preview strong {
-  margin-top: 0.15rem;
-  display: block;
-  font-size: clamp(1.55rem, 9vw, 2rem);
-  letter-spacing: 0.22em;
-  color: #fff5df;
-}
-
 .cta-btn {
   margin-top: 0.15rem;
   min-height: 2.95rem;
@@ -208,10 +181,100 @@ input:focus-visible {
   transform: translateY(1px) scale(0.993);
 }
 
+.cta-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  filter: grayscale(0.2);
+}
+
 .tiny-note {
   font-size: 0.74rem;
   color: #9dacbf;
   text-align: center;
+}
+
+.error-text {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(255, 99, 132, 0.45);
+  background: rgba(255, 99, 132, 0.15);
+  color: #ffd6de;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.lobby-card {
+  gap: 1rem;
+}
+
+.code-showcase {
+  border-radius: 1rem;
+  border: 1px dashed rgba(82, 211, 191, 0.55);
+  background: linear-gradient(
+    90deg,
+    rgba(82, 211, 191, 0.15),
+    rgba(58, 134, 255, 0.15)
+  );
+  padding: 0.8rem 0.95rem;
+}
+
+.code-showcase p {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.74rem;
+  color: #bdebe3;
+}
+
+.code-showcase strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: "Bebas Neue", "Oswald", sans-serif;
+  letter-spacing: 0.2em;
+  font-size: clamp(1.8rem, 11vw, 2.3rem);
+  color: #f8fbff;
+}
+
+.teams-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.team-card {
+  border-radius: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.8rem;
+}
+
+.team-card h2 {
+  margin: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #dce8f7;
+}
+
+.team-card ul {
+  margin: 0.6rem 0 0;
+  padding-left: 1rem;
+  color: #bbcadf;
+  font-size: 0.92rem;
+}
+
+.team-card li + li {
+  margin-top: 0.25rem;
+}
+
+.ghost-btn {
+  min-height: 2.8rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #eaf0fa;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .stagger-1,
@@ -304,9 +367,12 @@ input:focus-visible {
 
   .mode-panel label,
   .mode-panel input,
-  .mode-panel .code-preview,
   .mode-panel .cta-btn {
     grid-column: 1 / -1;
+  }
+
+  .teams-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

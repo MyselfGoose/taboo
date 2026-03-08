@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "NODE_ENV=development node index.js",
-    "test": "echo \"No tests configured\""
+    "test": "node --test ./tests/**/*.test.js",
+    "test:watch": "node --test --watch ./tests/**/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -14,7 +15,12 @@
   "type": "commonjs",
   "dependencies": {
     "compression": "^1.8.1",
+    "cors": "^2.8.5",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
     "helmet": "^8.1.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.4"
   }
 }
