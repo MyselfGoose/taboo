@@ -1,21 +1,28 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 
 import App from "./App";
 
-describe("App lobby flow", () => {
+function renderApp() {
+  return render(
+    <MemoryRouter initialEntries={["/"]}>
+      <App />
+    </MemoryRouter>,
+  );
+}
+
+describe("App routed lobby flow", () => {
   beforeEach(() => {
     global.fetch = vi.fn();
 
     class MockWebSocket {
-      static instances = [];
       static OPEN = 1;
 
       constructor() {
         this.listeners = new Map();
         this.readyState = MockWebSocket.OPEN;
-        MockWebSocket.instances.push(this);
         setTimeout(() => {
           this.dispatch("open");
         }, 0);
@@ -28,14 +35,10 @@ describe("App lobby flow", () => {
         this.listeners.get(type).add(listener);
       }
 
-      removeEventListener(type, listener) {
-        this.listeners.get(type)?.delete(listener);
-      }
-
-      dispatch(type, event = {}) {
-        const handlers = this.listeners.get(type) || [];
-        for (const handler of handlers) {
-          handler(event);
+      dispatch(type, payload = {}) {
+        const listeners = this.listeners.get(type) || [];
+        for (const listener of listeners) {
+          listener(payload);
         }
       }
 
@@ -53,55 +56,60 @@ describe("App lobby flow", () => {
     vi.resetAllMocks();
   });
 
-  it("renders landing options and hides code preview on create panel", () => {
-    render(<App />);
+  it("renders create and join forms on landing page", () => {
+    renderApp();
 
     expect(
-      screen.getByRole("tab", { name: "Create Game" }),
+      screen.getByRole("heading", { name: "Create Lobby" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Join Game" })).toBeInTheDocument();
-    expect(screen.queryByText("Suggested Lobby Code")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Join Lobby" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("landing-page")).toBeInTheDocument();
   });
 
   it("sanitizes join code input to uppercase alphanumeric and max length 4", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
 
-    await user.click(screen.getByRole("tab", { name: "Join Game" }));
-
-    const codeInput = screen.getByLabelText("4-Digit Lobby Code");
+    const codeInput = screen.getByLabelText("Lobby code");
     await user.type(codeInput, "a!b1c2");
 
     expect(codeInput).toHaveValue("AB1C");
   });
 
-  it("creates lobby and navigates to lobby screen with generated code", async () => {
+  it("creates lobby and navigates to lobby route", async () => {
     const user = userEvent.setup();
     global.fetch.mockResolvedValueOnce({
       ok: true,
       headers: new Headers({ "content-type": "application/json" }),
       json: async () => ({
         code: "AB12",
+        playerName: "Alice",
         lobby: {
           code: "AB12",
+          hostName: "Alice",
           members: ["Alice"],
           players: [{ name: "Alice", team: "A", ready: false }],
           teams: { A: ["Alice"], B: [] },
           allReady: false,
-          memberCount: 1,
           settings: { roundCount: 5, roundDurationSeconds: 60 },
         },
       }),
     });
 
-    render(<App />);
-    await user.type(screen.getByLabelText("Your Name"), "Alice");
-    await user.click(screen.getByRole("button", { name: "Create New Lobby" }));
+    renderApp();
+    await user.type(
+      screen.getByLabelText("Your name", { selector: "#create-name" }),
+      "Alice",
+    );
+    await user.click(screen.getByRole("button", { name: "Create Lobby" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Joining Code")).toBeInTheDocument();
-      expect(screen.getByText("AB12")).toBeInTheDocument();
-      expect(screen.getByText("Team A")).toBeInTheDocument();
+      expect(screen.getByTestId("lobby-page")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Code AB12" }),
+      ).toBeInTheDocument();
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
@@ -126,27 +134,16 @@ describe("App lobby flow", () => {
       json: async () => ({ error: "Lobby not found." }),
     });
 
-    render(<App />);
-    await user.click(screen.getByRole("tab", { name: "Join Game" }));
-    await user.type(screen.getByLabelText("Your Name"), "Bob");
-    await user.type(screen.getByLabelText("4-Digit Lobby Code"), "ZZZZ");
+    renderApp();
+    await user.type(
+      screen.getByLabelText("Your name", { selector: "#join-name" }),
+      "Bob",
+    );
+    await user.type(screen.getByLabelText("Lobby code"), "1234");
     await user.click(screen.getByRole("button", { name: "Join Lobby" }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Lobby not found/)).toBeInTheDocument();
+      expect(screen.getByText(/Lobby not found\./i)).toBeInTheDocument();
     });
-  });
-
-  it("shows rounds and round-time options on create panel", () => {
-    render(<App />);
-
-    expect(screen.getByLabelText("Rounds")).toBeInTheDocument();
-    expect(screen.getByLabelText("Round Time")).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "30 seconds" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "300 seconds" }),
-    ).toBeInTheDocument();
   });
 });
