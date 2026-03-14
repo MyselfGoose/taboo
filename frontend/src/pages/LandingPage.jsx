@@ -20,7 +20,8 @@ function normalizeCode(code) {
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { setLobbySession, setErrorMessage } = useLobby();
+  const { lobbySession, restoreState, setLobbySession, setErrorMessage } =
+    useLobby();
   const reduceMotion = useReducedMotion();
 
   const [activeTab, setActiveTab] = useState("create");
@@ -51,6 +52,32 @@ export default function LandingPage() {
   );
 
   useEffect(() => {
+    if (restoreState === "restoring") {
+      return;
+    }
+
+    if (!lobbySession?.code) {
+      return;
+    }
+
+    if (lobbySession.lobby?.game?.status === "in_progress") {
+      navigate(`/game/${lobbySession.code}`, { replace: true });
+      return;
+    }
+
+    navigate(`/lobby/${lobbySession.code}`, { replace: true });
+  }, [
+    restoreState,
+    lobbySession?.code,
+    lobbySession?.lobby?.game?.status,
+    navigate,
+  ]);
+
+  useEffect(() => {
+    if (restoreState === "restoring" || lobbySession?.code) {
+      return;
+    }
+
     let active = true;
     const loadCategories = async () => {
       setCategoriesLoading(true);
@@ -68,8 +95,10 @@ export default function LandingPage() {
       }
     };
     loadCategories();
-    return () => { active = false; };
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [restoreState, lobbySession?.code]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -138,7 +167,10 @@ export default function LandingPage() {
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-[400px] h-[300px] bg-[#b73b3b]/10 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Main Content */}
-      <main className="relative z-10 flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8 max-w-md mx-auto w-full" data-testid="landing-page">
+      <main
+        className="relative z-10 flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8 max-w-md mx-auto w-full"
+        data-testid="landing-page"
+      >
         {/* Logo / Header */}
         <motion.div
           initial={anim ? { opacity: 0, y: -10 } : false}
@@ -148,8 +180,12 @@ export default function LandingPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-[#1e3a5f] to-[#2a4d7a] mb-3 shadow-lg shadow-[#1e3a5f]/20">
             <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-[family-name:var(--font-display)]">Taboo</h1>
-          <p className="text-sm text-neutral-400 mt-1">The ultimate party word game</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-[family-name:var(--font-display)]">
+            Taboo
+          </h1>
+          <p className="text-sm text-neutral-400 mt-1">
+            The ultimate party word game
+          </p>
         </motion.div>
 
         {/* Form Card */}
@@ -167,7 +203,9 @@ export default function LandingPage() {
                 onClick={() => setActiveTab("create")}
                 className={cn(
                   "flex-1 py-3.5 sm:py-4 text-sm font-medium transition-all relative",
-                  activeTab === "create" ? "text-white" : "text-neutral-500 hover:text-neutral-300",
+                  activeTab === "create"
+                    ? "text-white"
+                    : "text-neutral-500 hover:text-neutral-300",
                 )}
               >
                 <span className="flex items-center justify-center gap-2">
@@ -186,7 +224,9 @@ export default function LandingPage() {
                 onClick={() => setActiveTab("join")}
                 className={cn(
                   "flex-1 py-3.5 sm:py-4 text-sm font-medium transition-all relative",
-                  activeTab === "join" ? "text-white" : "text-neutral-500 hover:text-neutral-300",
+                  activeTab === "join"
+                    ? "text-white"
+                    : "text-neutral-500 hover:text-neutral-300",
                 )}
               >
                 <span className="flex items-center justify-center gap-2">
@@ -211,7 +251,9 @@ export default function LandingPage() {
                   exit={{ opacity: 0, height: 0 }}
                   className="bg-[#b73b3b]/10 border-b border-[#b73b3b]/20 px-4 py-2.5"
                 >
-                  <p className="text-sm text-[#c94d4d]" role="alert">{localError}</p>
+                  <p className="text-sm text-[#c94d4d]" role="alert">
+                    {localError}
+                  </p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -230,7 +272,10 @@ export default function LandingPage() {
                     className="space-y-4"
                   >
                     <div className="space-y-1.5">
-                      <label htmlFor="create-name" className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
+                      <label
+                        htmlFor="create-name"
+                        className="text-xs font-medium text-neutral-400 uppercase tracking-wider"
+                      >
                         Your Name
                       </label>
                       <Input
@@ -247,7 +292,10 @@ export default function LandingPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <label htmlFor="rounds" className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
+                        <label
+                          htmlFor="rounds"
+                          className="text-xs font-medium text-neutral-400 uppercase tracking-wider"
+                        >
                           Rounds
                         </label>
                         <Input
@@ -256,18 +304,25 @@ export default function LandingPage() {
                           min={1}
                           max={10}
                           value={roundCount}
-                          onChange={(e) => setRoundCount(Number(e.target.value))}
+                          onChange={(e) =>
+                            setRoundCount(Number(e.target.value))
+                          }
                           required
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label htmlFor="duration" className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
+                        <label
+                          htmlFor="duration"
+                          className="text-xs font-medium text-neutral-400 uppercase tracking-wider"
+                        >
                           Duration
                         </label>
                         <Select
                           id="duration"
                           value={roundDurationSeconds}
-                          onChange={(e) => setRoundDurationSeconds(Number(e.target.value))}
+                          onChange={(e) =>
+                            setRoundDurationSeconds(Number(e.target.value))
+                          }
                         >
                           {roundOptionLabels.map((opt) => (
                             <option key={opt.seconds} value={opt.seconds}>
@@ -316,12 +371,17 @@ export default function LandingPage() {
                         >
                           <Select
                             value={selectedCategoryId}
-                            onChange={(e) => setSelectedCategoryId(e.target.value)}
+                            onChange={(e) =>
+                              setSelectedCategoryId(e.target.value)
+                            }
                             disabled={categoriesLoading}
                             className="mt-2"
                           >
                             {selectableCategories.map((cat) => (
-                              <option key={cat.categoryId} value={cat.categoryId}>
+                              <option
+                                key={cat.categoryId}
+                                value={cat.categoryId}
+                              >
                                 {cat.category} ({cat.wordCount} words)
                               </option>
                             ))}
@@ -332,10 +392,18 @@ export default function LandingPage() {
 
                     <button
                       type="submit"
-                      disabled={isSubmitting || categoriesLoading || selectableCategories.length === 0}
+                      disabled={
+                        isSubmitting ||
+                        categoriesLoading ||
+                        selectableCategories.length === 0
+                      }
                       className="w-full h-12 sm:h-13 rounded-xl bg-gradient-to-r from-[#1e3a5f] to-[#2a4d7a] text-white font-semibold text-sm hover:from-[#2a4d7a] hover:to-[#3b6ca8] transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#1e3a5f]/20 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {isSubmitting ? "Creating..." : categoriesLoading ? "Loading..." : "Create Lobby"}
+                      {isSubmitting
+                        ? "Creating..."
+                        : categoriesLoading
+                          ? "Loading..."
+                          : "Create Lobby"}
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                     </button>
                   </motion.form>
@@ -350,7 +418,10 @@ export default function LandingPage() {
                     className="space-y-4"
                   >
                     <div className="space-y-1.5">
-                      <label htmlFor="join-name" className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
+                      <label
+                        htmlFor="join-name"
+                        className="text-xs font-medium text-neutral-400 uppercase tracking-wider"
+                      >
                         Your Name
                       </label>
                       <Input
@@ -366,7 +437,10 @@ export default function LandingPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label htmlFor="join-code" className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
+                      <label
+                        htmlFor="join-code"
+                        className="text-xs font-medium text-neutral-400 uppercase tracking-wider"
+                      >
                         Lobby Code
                       </label>
                       <Input
@@ -374,7 +448,9 @@ export default function LandingPage() {
                         type="text"
                         placeholder="XXXX"
                         value={joinCode}
-                        onChange={(e) => setJoinCode(normalizeCode(e.target.value))}
+                        onChange={(e) =>
+                          setJoinCode(normalizeCode(e.target.value))
+                        }
                         maxLength={4}
                         required
                         className="h-14 sm:h-16 text-center text-2xl sm:text-3xl font-mono tracking-[0.3em] placeholder:tracking-[0.3em] uppercase"

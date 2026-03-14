@@ -164,7 +164,10 @@ function createApp() {
   });
 
   app.use("/api", apiLimiter);
-  app.use("/api", lobbyLimiter, createLobbyRouter({ lobbyController }));
+  app.post("/api/lobbies", lobbyLimiter);
+  app.post("/api/lobbies/join", lobbyLimiter);
+  app.post("/api/sessions/restore", lobbyLimiter);
+  app.use("/api", createLobbyRouter({ lobbyController }));
 
   app.use(notFoundMiddleware);
   app.use(errorHandler({ logger }));

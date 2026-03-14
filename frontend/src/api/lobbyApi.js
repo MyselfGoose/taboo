@@ -1,6 +1,11 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:3000";
 
+const CATEGORY_CACHE_TTL_MS = 30 * 1000;
+let categoriesCache = null;
+let categoriesCacheExpiresAt = 0;
+let categoriesInFlight = null;
+
 function toWebSocketBaseUrl(httpBaseUrl) {
   if (httpBaseUrl.startsWith("https://")) {
     return `wss://${httpBaseUrl.slice("https://".length)}`;
@@ -66,20 +71,44 @@ export async function createLobby({
 }
 
 export async function getCategories() {
-  const response = await fetch(`${API_BASE_URL}/api/categories`);
-  const payload = await parseApiResponse(response);
-
-  if (!response.ok) {
-    throw new Error(
-      toErrorMessage(response.status, payload, "Could not fetch categories"),
-    );
+  const now = Date.now();
+  if (categoriesCache && categoriesCacheExpiresAt > now) {
+    return categoriesCache;
   }
 
-  if (!payload || !Array.isArray(payload.categories)) {
-    throw new Error("Categories response is missing required data");
+  if (categoriesInFlight) {
+    return categoriesInFlight;
   }
 
-  return payload.categories;
+  categoriesInFlight = (async () => {
+    const response = await fetch(`${API_BASE_URL}/api/categories`);
+    const payload = await parseApiResponse(response);
+
+    if (!response.ok) {
+      const retryAfterSeconds = response.headers.get("retry-after");
+      const retryHint =
+        response.status === 429 && retryAfterSeconds
+          ? ` Retry after ${retryAfterSeconds}s.`
+          : "";
+      throw new Error(
+        `${toErrorMessage(response.status, payload, "Could not fetch categories")}${retryHint}`,
+      );
+    }
+
+    if (!payload || !Array.isArray(payload.categories)) {
+      throw new Error("Categories response is missing required data");
+    }
+
+    categoriesCache = payload.categories;
+    categoriesCacheExpiresAt = Date.now() + CATEGORY_CACHE_TTL_MS;
+    return categoriesCache;
+  })();
+
+  try {
+    return await categoriesInFlight;
+  } finally {
+    categoriesInFlight = null;
+  }
 }
 
 export async function joinLobby(name, code) {
