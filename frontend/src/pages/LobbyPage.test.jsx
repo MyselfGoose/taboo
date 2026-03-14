@@ -128,6 +128,51 @@ describe("LobbyPage", () => {
     });
   });
 
+  it("marks ready player unready before switching teams", async () => {
+    const sendLobbyAction = vi.fn();
+
+    mockUseLobby.mockReturnValue(
+      buildLobbyState({
+        sendLobbyAction,
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-1",
+          playerName: "Alice",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
+            ],
+            teams: {
+              A: ["Alice"],
+              B: ["Bob"],
+            },
+            settings: {
+              roundCount: 5,
+              roundDurationSeconds: 60,
+              categoryNames: ["Classic"],
+            },
+            game: null,
+          },
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderLobby();
+
+    await user.click(screen.getByRole("button", { name: "Join Team Beta" }));
+
+    expect(sendLobbyAction).toHaveBeenNthCalledWith(1, {
+      type: "set_ready",
+      ready: false,
+    });
+    expect(sendLobbyAction).toHaveBeenNthCalledWith(2, {
+      type: "change_team",
+      team: "B",
+    });
+  });
+
   it("renders readiness tags for each player", () => {
     mockUseLobby.mockReturnValue(buildLobbyState());
 

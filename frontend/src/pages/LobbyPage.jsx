@@ -84,7 +84,20 @@ export default function LobbyPage() {
   };
 
   const handleTeamChange = (team) => {
+    if (!currentPlayer) {
+      return;
+    }
+
+    if (team === currentPlayer.team) {
+      return;
+    }
+
     setErrorMessage("");
+
+    if (currentPlayer.ready) {
+      sendLobbyAction({ type: "set_ready", ready: false });
+    }
+
     sendLobbyAction({ type: "change_team", team });
   };
 
@@ -299,7 +312,7 @@ export default function LobbyPage() {
           {...(anim ? motionPresets.sectionEnter(0.15) : {})}
           className="flex-1 mb-4"
         >
-          <div className="grid grid-cols-2 gap-3 h-full">
+          <div className="grid grid-cols-1 gap-3 h-full sm:grid-cols-2">
             {/* Team Alpha */}
             <div
               className={cn(
@@ -324,13 +337,13 @@ export default function LobbyPage() {
                         key={name}
                         {...(anim ? motionPresets.playerItem : {})}
                         className={cn(
-                          "flex items-center gap-2 p-2 rounded-lg",
+                          "flex min-h-12 items-center gap-2 rounded-lg p-2.5",
                           isCurrent ? teamA.highlight : "bg-white/[0.03]",
                         )}
                       >
                         <div
                           className={cn(
-                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                             isCurrent
                               ? cn(teamA.avatarBg, "text-white")
                               : "bg-white/10 text-neutral-400",
@@ -338,8 +351,11 @@ export default function LobbyPage() {
                         >
                           {name.charAt(0)}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-white truncate">
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="truncate text-xs font-medium text-white"
+                            title={name}
+                          >
                             {name}{" "}
                             {isCurrent && (
                               <span className="text-neutral-500">(You)</span>
@@ -348,7 +364,7 @@ export default function LobbyPage() {
                         </div>
                         <StatusPill
                           variant={player?.ready ? "success" : "warning"}
-                          className="px-2 py-0.5 text-[10px] font-semibold"
+                          className="shrink-0 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap"
                           aria-label={player?.ready ? "Ready" : "Not Ready"}
                         >
                           {player?.ready ? "Ready" : "Not Ready"}
@@ -389,13 +405,13 @@ export default function LobbyPage() {
                         key={name}
                         {...(anim ? motionPresets.playerItem : {})}
                         className={cn(
-                          "flex items-center gap-2 p-2 rounded-lg",
+                          "flex min-h-12 items-center gap-2 rounded-lg p-2.5",
                           isCurrent ? teamB.highlight : "bg-white/[0.03]",
                         )}
                       >
                         <div
                           className={cn(
-                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                             isCurrent
                               ? cn(teamB.avatarBg, "text-white")
                               : "bg-white/10 text-neutral-400",
@@ -403,8 +419,11 @@ export default function LobbyPage() {
                         >
                           {name.charAt(0)}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-white truncate">
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="truncate text-xs font-medium text-white"
+                            title={name}
+                          >
                             {name}{" "}
                             {isCurrent && (
                               <span className="text-neutral-500">(You)</span>
@@ -413,7 +432,7 @@ export default function LobbyPage() {
                         </div>
                         <StatusPill
                           variant={player?.ready ? "success" : "warning"}
-                          className="px-2 py-0.5 text-[10px] font-semibold"
+                          className="shrink-0 px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap"
                           aria-label={player?.ready ? "Ready" : "Not Ready"}
                         >
                           {player?.ready ? "Ready" : "Not Ready"}
