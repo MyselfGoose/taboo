@@ -31,6 +31,7 @@ function buildGameState(overrides = {}) {
       playerId: "player-1",
       lobby: {
         players: [{ id: "player-1", name: "Alice", team: "A", ready: true }],
+        settings: { roundDurationSeconds: 60 },
         game: {
           status: "in_progress",
           roundNumber: 2,
@@ -109,19 +110,44 @@ describe("GamePage", () => {
     const user = userEvent.setup();
     renderGame();
 
-    await user.click(screen.getByRole("button", { name: "Guessed" }));
-    await user.click(screen.getByRole("button", { name: "Pass" }));
-    await user.click(screen.getByRole("button", { name: "Taboo" }));
-
+    await user.click(screen.getByRole("button", { name: /Correct/i }));
     expect(setErrorMessage).toHaveBeenCalledWith("");
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "game_action",
       action: "guess_correct",
     });
+  });
+
+  it("dispatches pass action", async () => {
+    const sendLobbyAction = vi.fn();
+    const setErrorMessage = vi.fn();
+
+    mockUseLobby.mockReturnValue(
+      buildGameState({ sendLobbyAction, setErrorMessage }),
+    );
+
+    const user = userEvent.setup();
+    renderGame();
+
+    await user.click(screen.getByRole("button", { name: /Pass/i }));
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "game_action",
       action: "pass_card",
     });
+  });
+
+  it("dispatches taboo action", async () => {
+    const sendLobbyAction = vi.fn();
+    const setErrorMessage = vi.fn();
+
+    mockUseLobby.mockReturnValue(
+      buildGameState({ sendLobbyAction, setErrorMessage }),
+    );
+
+    const user = userEvent.setup();
+    renderGame();
+
+    await user.click(screen.getByRole("button", { name: /Taboo/i }));
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "game_action",
       action: "taboo_called",
@@ -138,6 +164,7 @@ describe("GamePage", () => {
             players: [
               { id: "player-1", name: "Alice", team: "B", ready: true },
             ],
+            settings: { roundDurationSeconds: 60 },
             game: {
               status: "in_progress",
               roundNumber: 1,
@@ -158,9 +185,9 @@ describe("GamePage", () => {
 
     renderGame();
 
-    expect(screen.getByRole("button", { name: "Guessed" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Pass" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Taboo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Correct/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Pass/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Taboo/i })).toBeDisabled();
   });
 
   it("updates displayed timer while round is in progress", async () => {
@@ -176,6 +203,7 @@ describe("GamePage", () => {
             players: [
               { id: "player-1", name: "Alice", team: "A", ready: true },
             ],
+            settings: { roundDurationSeconds: 60 },
             game: {
               status: "in_progress",
               roundNumber: 1,
@@ -196,12 +224,82 @@ describe("GamePage", () => {
 
     renderGame();
 
-    expect(screen.getByText("4s")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(2100);
     });
 
-    expect(screen.getByText("2s")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("shows blurred card when player is not on active team", () => {
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-1",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "B", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "in_progress",
+              roundNumber: 1,
+              totalRounds: 5,
+              activeTeam: "A",
+              roundEndsAt: Date.now() + 30000,
+              scores: { A: 0, B: 0 },
+              currentCard: {
+                question: "River",
+                category: "Nature",
+                taboo: ["Water", "Flow"],
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    renderGame();
+
+    const heading = screen.getByText("River");
+    expect(heading.className).toMatch(/blur/);
+
+    expect(screen.getByText(/Words hidden/i)).toBeInTheDocument();
+  });
+
+  it("shows game over screen when game is finished", () => {
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-1",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "finished",
+              roundNumber: 5,
+              totalRounds: 5,
+              activeTeam: "A",
+              roundEndsAt: null,
+              scores: { A: 7, B: 3 },
+              currentCard: null,
+            },
+          },
+        },
+      }),
+    );
+
+    renderGame();
+
+    expect(screen.getByText("Game Over!")).toBeInTheDocument();
+    expect(screen.getByText(/Team Alpha wins/)).toBeInTheDocument();
+    expect(screen.getByText("7")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 });

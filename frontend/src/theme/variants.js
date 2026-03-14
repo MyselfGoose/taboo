@@ -24,6 +24,8 @@ export function teamColors(team) {
         pillBorder: "border-[#3b6ca8]/30",
         pillText: "text-[#4a7dbb]",
         scoreBg: "bg-[#1e3a5f]/20 border-[#3b6ca8]/40",
+        activeScoreBg: "bg-[#1e3a5f]/20 border-[#3b6ca8]/40",
+        inactiveScoreBg: "bg-white/[0.03] border-white/[0.06]",
         youText: "text-[#4a7dbb]",
       }
     : {
@@ -43,6 +45,8 @@ export function teamColors(team) {
         pillBorder: "border-[#c94d4d]/30",
         pillText: "text-[#da5e5e]",
         scoreBg: "bg-[#b73b3b]/20 border-[#c94d4d]/40",
+        activeScoreBg: "bg-[#b73b3b]/20 border-[#c94d4d]/40",
+        inactiveScoreBg: "bg-white/[0.03] border-white/[0.06]",
         youText: "text-[#c94d4d]",
       };
 }
