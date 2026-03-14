@@ -9,11 +9,12 @@ import {
   Target,
   Wifi,
   WifiOff,
-  ArrowLeft,
+  LogOut,
   Play,
   ChevronRight,
 } from "lucide-react";
 
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { StatusPill } from "../components/ui/StatusPill";
 import { useLobby } from "../hooks/useLobby";
 import { cn } from "../lib/cn";
@@ -26,6 +27,7 @@ export default function LobbyPage() {
   const reduceMotion = useReducedMotion();
   const {
     lobbySession,
+    clearLobbySession,
     sendLobbyAction,
     connectionState,
     errorMessage,
@@ -36,6 +38,12 @@ export default function LobbyPage() {
   } = useLobby();
 
   const [copied, setCopied] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+  const handleLeave = () => {
+    clearLobbySession();
+    navigate("/");
+  };
 
   useEffect(() => {
     if (restoreState === "restoring") return;
@@ -128,11 +136,12 @@ export default function LobbyPage() {
         className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-white/[0.06]"
       >
         <button
-          onClick={() => navigate("/")}
+          onClick={() => setShowLeaveConfirm(true)}
           className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors"
+          aria-label="Leave lobby"
         >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="text-sm font-medium">Leave</span>
+          <LogOut className="w-5 h-5" />
+          <span className="text-sm font-medium hidden sm:inline">Leave</span>
         </button>
 
         <StatusPill variant={connectionVariant(connectionState)}>
@@ -489,6 +498,17 @@ export default function LobbyPage() {
           </button>
         </motion.section>
       </main>
+
+      <ConfirmDialog
+        open={showLeaveConfirm}
+        title="Leave Lobby?"
+        description="You'll be removed from this lobby and need the code to rejoin."
+        confirmLabel="Leave"
+        cancelLabel="Stay"
+        variant="danger"
+        onConfirm={handleLeave}
+        onCancel={() => setShowLeaveConfirm(false)}
+      />
     </div>
   );
 }

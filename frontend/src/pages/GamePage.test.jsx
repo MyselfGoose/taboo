@@ -50,6 +50,7 @@ function buildGameState(overrides = {}) {
     restoreState: "restored",
     sendLobbyAction: vi.fn(),
     setErrorMessage: vi.fn(),
+    clearLobbySession: vi.fn(),
     ...overrides,
   };
 }
@@ -301,5 +302,66 @@ describe("GamePage", () => {
     expect(screen.getByText(/Team Alpha wins/)).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("opens confirm dialog when leave button is clicked", async () => {
+    mockUseLobby.mockReturnValue(buildGameState());
+
+    const user = userEvent.setup();
+    renderGame();
+
+    await user.click(screen.getByRole("button", { name: "Leave game" }));
+
+    expect(screen.getByText("Leave Game?")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "You'll be removed from the game in progress. This can't be undone.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("calls clearLobbySession when leave is confirmed", async () => {
+    const clearLobbySession = vi.fn();
+    mockUseLobby.mockReturnValue(buildGameState({ clearLobbySession }));
+
+    const user = userEvent.setup();
+    renderGame();
+
+    await user.click(screen.getByRole("button", { name: "Leave game" }));
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+
+    expect(clearLobbySession).toHaveBeenCalled();
+  });
+
+  it("shows leave button on game over screen", () => {
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-1",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "finished",
+              roundNumber: 5,
+              totalRounds: 5,
+              activeTeam: "A",
+              roundEndsAt: null,
+              scores: { A: 7, B: 3 },
+              currentCard: null,
+            },
+          },
+        },
+      }),
+    );
+
+    renderGame();
+
+    expect(
+      screen.getByRole("button", { name: "Leave Game" }),
+    ).toBeInTheDocument();
   });
 });

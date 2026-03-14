@@ -1,16 +1,17 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
-  ArrowLeft,
   Check,
   Clock,
+  LogOut,
   SkipForward,
   Trophy,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { useLobby } from "../hooks/useLobby";
 import { cn } from "../lib/cn";
 import { motionPresets } from "../theme/motion";
@@ -20,7 +21,7 @@ import { teamColors } from "../theme/variants";
 /*  Game Over Screen                                                   */
 /* ------------------------------------------------------------------ */
 
-function GameOverScreen({ game, reduceMotion }) {
+function GameOverScreen({ game, reduceMotion, onLeave }) {
   const scoreA = game?.scores?.A ?? 0;
   const scoreB = game?.scores?.B ?? 0;
   const winner = scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : "tie";
@@ -74,6 +75,15 @@ function GameOverScreen({ game, reduceMotion }) {
             </p>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={onLeave}
+          className="flex w-full items-center justify-center gap-1.5 h-11 rounded-xl bg-white/[0.06] text-white text-sm font-medium hover:bg-white/[0.1] transition-all"
+        >
+          <LogOut className="h-4 w-4" />
+          Leave Game
+        </button>
       </motion.div>
     </div>
   );
@@ -85,14 +95,26 @@ function GameOverScreen({ game, reduceMotion }) {
 
 export default function GamePage() {
   const { code } = useParams();
+  const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
-  const { lobbySession, restoreState, sendLobbyAction, setErrorMessage } =
-    useLobby();
+  const {
+    lobbySession,
+    clearLobbySession,
+    restoreState,
+    sendLobbyAction,
+    setErrorMessage,
+  } = useLobby();
 
   const [lastAction, setLastAction] = useState(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const animTimeoutRef = useRef(null);
   const prevCardRef = useRef(null);
+
+  const handleLeave = useCallback(() => {
+    clearLobbySession();
+    navigate("/");
+  }, [clearLobbySession, navigate]);
 
   /* ------ early returns ------------------------------------------------ */
   if (restoreState === "restoring") {
@@ -218,7 +240,11 @@ export default function GamePage() {
         <div className="pointer-events-none fixed left-1/2 top-0 h-[400px] w-[500px] -translate-x-1/2 rounded-full bg-[#1e3a5f]/15 blur-[100px]" />
         <div className="pointer-events-none fixed bottom-0 left-1/2 h-[300px] w-[400px] -translate-x-1/2 rounded-full bg-[#b73b3b]/10 blur-[100px]" />
         <div className="relative z-10" data-testid="game-page">
-          <GameOverScreen game={game} reduceMotion={reduceMotion} />
+          <GameOverScreen
+            game={game}
+            reduceMotion={reduceMotion}
+            onLeave={handleLeave}
+          />
         </div>
       </div>
     );
@@ -254,13 +280,15 @@ export default function GamePage() {
         animate={{ opacity: 1, y: 0 }}
         className="relative z-10 flex items-center justify-between border-b border-white/[0.06] px-4 py-3"
       >
-        <Link
-          to={`/lobby/${code}`}
+        <button
+          type="button"
+          onClick={() => setShowLeaveConfirm(true)}
           className="flex items-center gap-2 text-neutral-400 transition-colors hover:text-white"
+          aria-label="Leave game"
         >
-          <ArrowLeft className="h-5 w-5" />
-          <span className="hidden text-sm font-medium sm:inline">Lobby</span>
-        </Link>
+          <LogOut className="h-5 w-5" />
+          <span className="hidden text-sm font-medium sm:inline">Leave</span>
+        </button>
 
         <div className="flex items-center gap-2">
           <span className="text-xs text-neutral-500">Round</span>
@@ -510,6 +538,17 @@ export default function GamePage() {
           )}
         </motion.section>
       </main>
+
+      <ConfirmDialog
+        open={showLeaveConfirm}
+        title="Leave Game?"
+        description="You'll be removed from the game in progress. This can't be undone."
+        confirmLabel="Leave"
+        cancelLabel="Stay"
+        variant="danger"
+        onConfirm={handleLeave}
+        onCancel={() => setShowLeaveConfirm(false)}
+      />
     </div>
   );
 }

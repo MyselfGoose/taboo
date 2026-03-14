@@ -53,6 +53,7 @@ function buildLobbyState(overrides = {}) {
     tabTag: "tab-a",
     restoreState: "restored",
     restoreError: "",
+    clearLobbySession: vi.fn(),
     ...overrides,
   };
 }
@@ -210,5 +211,34 @@ describe("LobbyPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Game Route")).toBeInTheDocument();
     });
+  });
+
+  it("opens confirm dialog when leave button is clicked", async () => {
+    mockUseLobby.mockReturnValue(buildLobbyState());
+
+    const user = userEvent.setup();
+    renderLobby();
+
+    await user.click(screen.getByRole("button", { name: "Leave lobby" }));
+
+    expect(screen.getByText("Leave Lobby?")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "You'll be removed from this lobby and need the code to rejoin.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("calls clearLobbySession when leave is confirmed", async () => {
+    const clearLobbySession = vi.fn();
+    mockUseLobby.mockReturnValue(buildLobbyState({ clearLobbySession }));
+
+    const user = userEvent.setup();
+    renderLobby();
+
+    await user.click(screen.getByRole("button", { name: "Leave lobby" }));
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+
+    expect(clearLobbySession).toHaveBeenCalled();
   });
 });
