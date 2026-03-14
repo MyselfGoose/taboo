@@ -80,16 +80,18 @@ describe("App routed lobby flow", () => {
     vi.resetAllMocks();
   });
 
-  it("renders create and join forms on landing page", () => {
+  it("renders create and join forms on landing page", async () => {
     renderApp();
 
-    expect(
-      screen.getByRole("heading", { name: "Create Lobby" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Join Lobby" }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("landing-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Create Lobby" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Join Lobby" }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("landing-page")).toBeInTheDocument();
+    });
   });
 
   it("sanitizes join code input to uppercase alphanumeric and max length 4", async () => {

@@ -1,7 +1,14 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-display:
-    "Bangers", "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif;
-  --font-body: "Baloo 2", "Trebuchet MS", "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Inter", "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  background: #0a0f1a;
+  color: #f3f7fb;
+  font-family: var(--font-body);
 }
