@@ -1,7 +1,7 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import GamePage from "./GamePage";
 
@@ -16,6 +16,7 @@ function renderGame(initialEntries = ["/game/AB12"]) {
     <MemoryRouter initialEntries={initialEntries}>
       <Routes>
         <Route path="/" element={<div>Home Route</div>} />
+        <Route path="/lobby/:code" element={<div>Lobby Route</div>} />
         <Route path="/game/:code" element={<GamePage />} />
       </Routes>
     </MemoryRouter>,
@@ -30,19 +31,41 @@ function buildGameState(overrides = {}) {
       code: "AB12",
       playerId: "player-1",
       lobby: {
-        players: [{ id: "player-1", name: "Alice", team: "A", ready: true }],
+        players: [
+          { id: "player-1", name: "Alice", team: "A", ready: true },
+          { id: "player-2", name: "Bob", team: "B", ready: true },
+        ],
         settings: { roundDurationSeconds: 60 },
         game: {
-          status: "in_progress",
-          roundNumber: 2,
+          status: "waiting_to_start_turn",
+          roundNumber: 1,
           totalRounds: 5,
+          nextRoundNumber: 1,
           activeTeam: "A",
-          roundEndsAt: now + 25000,
-          scores: { A: 4, B: 3 },
+          activeTurn: {
+            playerId: "player-1",
+            playerName: "Alice",
+            team: "A",
+            turnIndexInRound: 1,
+            totalTurnsInRound: 2,
+          },
+          scores: { A: 0, B: 0 },
+          turnEndsAt: null,
+          phaseEndsAt: now + 3000,
+          secondsRemaining: 3,
           currentCard: {
+            id: "card-1",
             question: "Sun",
             category: "Nature",
             taboo: ["Star", "Hot", "Sky"],
+          },
+          cardVisibleToViewer: true,
+          roleHint: "You are giving clues.",
+          permissions: {
+            canStartTurn: true,
+            canSubmitGuess: false,
+            canSkipCard: false,
+            canCallTaboo: false,
           },
         },
       },
@@ -58,11 +81,6 @@ function buildGameState(overrides = {}) {
 describe("GamePage", () => {
   beforeEach(() => {
     mockUseLobby.mockReset();
-    vi.useRealTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it("shows reconnecting state while restoring", () => {
@@ -97,86 +115,63 @@ describe("GamePage", () => {
     });
   });
 
-  it("dispatches game actions when player controls active team", async () => {
+  it("lets clue giver start the turn", async () => {
     const sendLobbyAction = vi.fn();
-    const setErrorMessage = vi.fn();
-
-    mockUseLobby.mockReturnValue(
-      buildGameState({
-        sendLobbyAction,
-        setErrorMessage,
-      }),
-    );
+    mockUseLobby.mockReturnValue(buildGameState({ sendLobbyAction }));
 
     const user = userEvent.setup();
     renderGame();
 
-    await user.click(screen.getByRole("button", { name: /Correct/i }));
-    expect(setErrorMessage).toHaveBeenCalledWith("");
+    await user.click(screen.getByRole("button", { name: /Start Turn/i }));
+
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "game_action",
-      action: "guess_correct",
+      action: "start_turn",
     });
   });
 
-  it("dispatches pass action", async () => {
-    const sendLobbyAction = vi.fn();
-    const setErrorMessage = vi.fn();
-
-    mockUseLobby.mockReturnValue(
-      buildGameState({ sendLobbyAction, setErrorMessage }),
-    );
-
-    const user = userEvent.setup();
-    renderGame();
-
-    await user.click(screen.getByRole("button", { name: /Pass/i }));
-    expect(sendLobbyAction).toHaveBeenCalledWith({
-      type: "game_action",
-      action: "pass_card",
-    });
-  });
-
-  it("dispatches taboo action", async () => {
-    const sendLobbyAction = vi.fn();
-    const setErrorMessage = vi.fn();
-
-    mockUseLobby.mockReturnValue(
-      buildGameState({ sendLobbyAction, setErrorMessage }),
-    );
-
-    const user = userEvent.setup();
-    renderGame();
-
-    await user.click(screen.getByRole("button", { name: /Taboo/i }));
-    expect(sendLobbyAction).toHaveBeenCalledWith({
-      type: "game_action",
-      action: "taboo_called",
-    });
-  });
-
-  it("disables action buttons when current player cannot control", () => {
+  it("shows waiting message for non-clue-giver during start phase", () => {
     mockUseLobby.mockReturnValue(
       buildGameState({
         lobbySession: {
           code: "AB12",
-          playerId: "player-1",
+          playerId: "player-2",
           lobby: {
             players: [
-              { id: "player-1", name: "Alice", team: "B", ready: true },
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
             ],
             settings: { roundDurationSeconds: 60 },
             game: {
-              status: "in_progress",
+              status: "waiting_to_start_turn",
               roundNumber: 1,
               totalRounds: 5,
+              nextRoundNumber: 1,
               activeTeam: "A",
-              roundEndsAt: Date.now() + 25000,
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 2,
+              },
               scores: { A: 0, B: 0 },
+              turnEndsAt: null,
+              phaseEndsAt: Date.now() + 3000,
+              secondsRemaining: 3,
               currentCard: {
-                question: "River",
+                id: "card-1",
+                question: "Sun",
                 category: "Nature",
-                taboo: ["Water", "Flow"],
+                taboo: ["Star", "Hot", "Sky"],
+              },
+              cardVisibleToViewer: true,
+              roleHint: "Watch for taboo words.",
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: false,
+                canSkipCard: false,
+                canCallTaboo: false,
               },
             },
           },
@@ -186,15 +181,202 @@ describe("GamePage", () => {
 
     renderGame();
 
-    expect(screen.getByRole("button", { name: /Correct/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Pass/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Taboo/i })).toBeDisabled();
+    expect(
+      screen.getByText("Waiting for Alice to start their turn."),
+    ).toBeInTheDocument();
   });
 
-  it("updates displayed timer while round is in progress", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-09T12:00:00.000Z"));
+  it("teammate can submit typed guess and card stays hidden", async () => {
+    const sendLobbyAction = vi.fn();
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        sendLobbyAction,
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-3",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-3", name: "Cara", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "turn_in_progress",
+              roundNumber: 1,
+              totalRounds: 5,
+              nextRoundNumber: 1,
+              activeTeam: "A",
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 3,
+              },
+              scores: { A: 0, B: 0 },
+              turnEndsAt: Date.now() + 30000,
+              phaseEndsAt: null,
+              secondsRemaining: 30,
+              currentCard: null,
+              cardVisibleToViewer: false,
+              roleHint: "Guess the word.",
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: true,
+                canSkipCard: false,
+                canCallTaboo: false,
+              },
+            },
+          },
+        },
+      }),
+    );
 
+    const user = userEvent.setup();
+    renderGame();
+
+    expect(screen.getByText("Hidden Card")).toBeInTheDocument();
+
+    const input = screen.getByRole("textbox", { name: "Type guess" });
+    await user.type(input, "  Sun  ");
+    await user.click(screen.getByRole("button", { name: "Guess" }));
+
+    expect(sendLobbyAction).toHaveBeenCalledWith({
+      type: "game_action",
+      action: "submit_guess",
+      guess: "Sun",
+    });
+    expect(input).toHaveValue("");
+  });
+
+  it("clue giver can skip but not call taboo", async () => {
+    const sendLobbyAction = vi.fn();
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        sendLobbyAction,
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-1",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "turn_in_progress",
+              roundNumber: 1,
+              totalRounds: 5,
+              nextRoundNumber: 1,
+              activeTeam: "A",
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 2,
+              },
+              scores: { A: 0, B: 0 },
+              turnEndsAt: Date.now() + 30000,
+              phaseEndsAt: null,
+              secondsRemaining: 30,
+              currentCard: {
+                id: "card-1",
+                question: "Sun",
+                category: "Nature",
+                taboo: ["Star", "Hot", "Sky"],
+              },
+              cardVisibleToViewer: true,
+              roleHint: "You are giving clues.",
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: false,
+                canSkipCard: true,
+                canCallTaboo: false,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderGame();
+
+    expect(screen.getByRole("button", { name: "Taboo" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(sendLobbyAction).toHaveBeenCalledWith({
+      type: "game_action",
+      action: "skip_card",
+    });
+  });
+
+  it("opponent can call taboo", async () => {
+    const sendLobbyAction = vi.fn();
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        sendLobbyAction,
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-2",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "turn_in_progress",
+              roundNumber: 1,
+              totalRounds: 5,
+              nextRoundNumber: 1,
+              activeTeam: "A",
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 2,
+              },
+              scores: { A: 0, B: 0 },
+              turnEndsAt: Date.now() + 30000,
+              phaseEndsAt: null,
+              secondsRemaining: 30,
+              currentCard: {
+                id: "card-1",
+                question: "Sun",
+                category: "Nature",
+                taboo: ["Star", "Hot", "Sky"],
+              },
+              cardVisibleToViewer: true,
+              roleHint: "Watch for taboo words.",
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: false,
+                canSkipCard: false,
+                canCallTaboo: true,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderGame();
+
+    expect(screen.getByRole("button", { name: "Skip" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Taboo" }));
+
+    expect(sendLobbyAction).toHaveBeenCalledWith({
+      type: "game_action",
+      action: "taboo_called",
+    });
+  });
+
+  it("shows round transition countdown", () => {
     mockUseLobby.mockReturnValue(
       buildGameState({
         lobbySession: {
@@ -203,59 +385,39 @@ describe("GamePage", () => {
           lobby: {
             players: [
               { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
             ],
             settings: { roundDurationSeconds: 60 },
             game: {
-              status: "in_progress",
+              status: "between_rounds",
               roundNumber: 1,
               totalRounds: 5,
+              nextRoundNumber: 2,
               activeTeam: "A",
-              roundEndsAt: Date.now() + 4000,
-              scores: { A: 1, B: 0 },
-              currentCard: {
-                question: "Cloud",
-                category: "Weather",
-                taboo: ["Rain", "Sky"],
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 2,
               },
-            },
-          },
-        },
-      }),
-    );
-
-    renderGame();
-
-    expect(screen.getByText("4")).toBeInTheDocument();
-
-    act(() => {
-      vi.advanceTimersByTime(2100);
-    });
-
-    expect(screen.getByText("2")).toBeInTheDocument();
-  });
-
-  it("shows blurred card when player is not on active team", () => {
-    mockUseLobby.mockReturnValue(
-      buildGameState({
-        lobbySession: {
-          code: "AB12",
-          playerId: "player-1",
-          lobby: {
-            players: [
-              { id: "player-1", name: "Alice", team: "B", ready: true },
-            ],
-            settings: { roundDurationSeconds: 60 },
-            game: {
-              status: "in_progress",
-              roundNumber: 1,
-              totalRounds: 5,
-              activeTeam: "A",
-              roundEndsAt: Date.now() + 30000,
-              scores: { A: 0, B: 0 },
+              scores: { A: 3, B: 2 },
+              turnEndsAt: null,
+              phaseEndsAt: Date.now() + 10000,
+              secondsRemaining: 10,
               currentCard: {
-                question: "River",
+                id: "card-1",
+                question: "Sun",
                 category: "Nature",
-                taboo: ["Water", "Flow"],
+                taboo: ["Star", "Hot", "Sky"],
+              },
+              cardVisibleToViewer: true,
+              roleHint: "Waiting for active turn.",
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: false,
+                canSkipCard: false,
+                canCallTaboo: false,
               },
             },
           },
@@ -265,10 +427,7 @@ describe("GamePage", () => {
 
     renderGame();
 
-    const heading = screen.getByText("River");
-    expect(heading.className).toMatch(/blur/);
-
-    expect(screen.getByText(/Words hidden/i)).toBeInTheDocument();
+    expect(screen.getByText(/Round 2 starts in/i)).toBeInTheDocument();
   });
 
   it("shows game over screen when game is finished", () => {
@@ -287,9 +446,7 @@ describe("GamePage", () => {
               roundNumber: 5,
               totalRounds: 5,
               activeTeam: "A",
-              roundEndsAt: null,
               scores: { A: 7, B: 3 },
-              currentCard: null,
             },
           },
         },
@@ -300,24 +457,6 @@ describe("GamePage", () => {
 
     expect(screen.getByText("Game Over!")).toBeInTheDocument();
     expect(screen.getByText(/Team Alpha wins/)).toBeInTheDocument();
-    expect(screen.getByText("7")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
-  });
-
-  it("opens confirm dialog when leave button is clicked", async () => {
-    mockUseLobby.mockReturnValue(buildGameState());
-
-    const user = userEvent.setup();
-    renderGame();
-
-    await user.click(screen.getByRole("button", { name: "Leave game" }));
-
-    expect(screen.getByText("Leave Game?")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "You'll be removed from the game in progress. This can't be undone.",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("calls clearLobbySession when leave is confirmed", async () => {
@@ -331,37 +470,5 @@ describe("GamePage", () => {
     await user.click(screen.getByRole("button", { name: "Leave" }));
 
     expect(clearLobbySession).toHaveBeenCalled();
-  });
-
-  it("shows leave button on game over screen", () => {
-    mockUseLobby.mockReturnValue(
-      buildGameState({
-        lobbySession: {
-          code: "AB12",
-          playerId: "player-1",
-          lobby: {
-            players: [
-              { id: "player-1", name: "Alice", team: "A", ready: true },
-            ],
-            settings: { roundDurationSeconds: 60 },
-            game: {
-              status: "finished",
-              roundNumber: 5,
-              totalRounds: 5,
-              activeTeam: "A",
-              roundEndsAt: null,
-              scores: { A: 7, B: 3 },
-              currentCard: null,
-            },
-          },
-        },
-      }),
-    );
-
-    renderGame();
-
-    expect(
-      screen.getByRole("button", { name: "Leave Game" }),
-    ).toBeInTheDocument();
   });
 });

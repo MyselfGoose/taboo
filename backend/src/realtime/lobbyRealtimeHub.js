@@ -26,7 +26,6 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
 
   function broadcastLobbyState(code, reason) {
     const lobby = lobbyService.getLobby({ lobbyCode: code });
-    const snapshot = lobbyService.toLobbySnapshot(lobby);
     const sockets = socketsByLobby.get(code);
 
     if (!sockets || sockets.size === 0) {
@@ -34,6 +33,10 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
     }
 
     for (const socket of sockets) {
+      const ctx = socketContext.get(socket);
+      const snapshot = lobbyService.toLobbySnapshot(lobby, {
+        viewerPlayerId: ctx?.playerId || null,
+      });
       safeSend(socket, {
         type: "lobby_state",
         reason,
@@ -156,7 +159,9 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
 
           safeSend(socket, {
             type: "subscribed",
-            lobby: lobbyService.toLobbySnapshot(lobby),
+            lobby: lobbyService.toLobbySnapshot(lobby, {
+              viewerPlayerId: playerId,
+            }),
           });
 
           broadcastLobbyState(code, "member_joined");
@@ -205,14 +210,18 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
         }
 
         if (message.type === "game_action") {
-          const lobby = lobbyService.applyGameActionByPlayerId({
+          const result = lobbyService.applyGameActionByPlayerId({
             playerId: ctx.playerId,
             lobbyCode: ctx.code,
             action: message.action,
+            guess: message.guess,
             requestId: ctx.requestId,
           });
 
-          broadcastLobbyState(lobby.code, `game_action_${message.action}`);
+          broadcastLobbyState(
+            result.lobby.code,
+            result.reason || `game_action_${message.action}`,
+          );
           return;
         }
 

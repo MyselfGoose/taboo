@@ -15,6 +15,9 @@ function renderApp() {
 
 describe("App routed lobby flow", () => {
   beforeEach(() => {
+    if (typeof window?.localStorage?.removeItem === "function") {
+      window.localStorage.removeItem("taboo-session-v1");
+    }
     global.fetch = vi.fn();
     global.fetch.mockImplementation((url) => {
       if (String(url).includes("/api/categories")) {
@@ -80,15 +83,15 @@ describe("App routed lobby flow", () => {
     vi.resetAllMocks();
   });
 
-  it("renders create and join forms on landing page", async () => {
+  it("renders create and join tabs on landing page", async () => {
     renderApp();
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Create Lobby" }),
+        screen.getByRole("button", { name: /Create Game/i }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Join Lobby" }),
+        screen.getByRole("button", { name: /Join Game/i }),
       ).toBeInTheDocument();
       expect(screen.getByTestId("landing-page")).toBeInTheDocument();
     });
@@ -98,7 +101,13 @@ describe("App routed lobby flow", () => {
     const user = userEvent.setup();
     renderApp();
 
-    const codeInput = screen.getByLabelText("Lobby code");
+    await user.click(screen.getByRole("button", { name: /Join Game/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(/Lobby Code/i, { selector: "#join-code" }),
+      ).toBeInTheDocument();
+    });
+    const codeInput = screen.getByLabelText(/Lobby Code/i);
     await user.type(codeInput, "a!b1c2");
 
     expect(codeInput).toHaveValue("AB1C");
@@ -160,16 +169,14 @@ describe("App routed lobby flow", () => {
 
     renderApp();
     await user.type(
-      screen.getByLabelText("Your name", { selector: "#create-name" }),
+      screen.getByLabelText(/Your Name/i, { selector: "#create-name" }),
       "Alice",
     );
     await user.click(screen.getByRole("button", { name: "Create Lobby" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("lobby-page")).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Code AB12" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("AB12")).toBeInTheDocument();
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
@@ -224,11 +231,17 @@ describe("App routed lobby flow", () => {
     });
 
     renderApp();
+    await user.click(screen.getByRole("button", { name: /Join Game/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(/Your Name/i, { selector: "#join-name" }),
+      ).toBeInTheDocument();
+    });
     await user.type(
-      screen.getByLabelText("Your name", { selector: "#join-name" }),
+      screen.getByLabelText(/Your Name/i, { selector: "#join-name" }),
       "Bob",
     );
-    await user.type(screen.getByLabelText("Lobby code"), "1234");
+    await user.type(screen.getByLabelText(/Lobby Code/i), "1234");
     await user.click(screen.getByRole("button", { name: "Join Lobby" }));
 
     await waitFor(() => {

@@ -173,24 +173,36 @@ test("websocket broadcasts lobby member updates in real time", async () => {
     (msg) =>
       msg.type === "lobby_state" &&
       msg.reason === "game_started" &&
-      msg.lobby?.game?.status === "in_progress",
+      msg.lobby?.game?.status === "waiting_to_start_turn",
   );
 
   assert.equal(startedState.lobby.game.activeTeam, "A");
 
-  bobSocket.send(
-    JSON.stringify({ type: "game_action", action: "guess_correct" }),
-  );
+  bobSocket.send(JSON.stringify({ type: "game_action", action: "start_turn" }));
 
-  const scoredState = await waitForMessage(
+  const turnStartedState = await waitForMessage(
     hostSocket,
     (msg) =>
       msg.type === "lobby_state" &&
-      msg.reason === "game_action_guess_correct" &&
-      msg.lobby?.game?.scores?.A === 1,
+      msg.reason === "turn_started" &&
+      msg.lobby?.game?.status === "turn_in_progress",
   );
 
-  assert.equal(scoredState.lobby.game.scores.A, 1);
+  assert.equal(turnStartedState.lobby.game.activeTeam, "A");
+
+  hostSocket.send(
+    JSON.stringify({ type: "game_action", action: "taboo_called" }),
+  );
+
+  const tabooState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.reason === "taboo_called" &&
+      msg.lobby?.game?.scores?.A === -1,
+  );
+
+  assert.equal(tabooState.lobby.game.scores.A, -1);
 
   bobSocket.close();
 

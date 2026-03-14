@@ -1,14 +1,14 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
-  Check,
   Clock,
   LogOut,
+  Play,
   SkipForward,
   Trophy,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
@@ -16,10 +16,6 @@ import { useLobby } from "../hooks/useLobby";
 import { cn } from "../lib/cn";
 import { motionPresets } from "../theme/motion";
 import { teamColors } from "../theme/variants";
-
-/* ------------------------------------------------------------------ */
-/*  Game Over Screen                                                   */
-/* ------------------------------------------------------------------ */
 
 function GameOverScreen({ game, reduceMotion, onLeave }) {
   const scoreA = game?.scores?.A ?? 0;
@@ -79,7 +75,7 @@ function GameOverScreen({ game, reduceMotion, onLeave }) {
         <button
           type="button"
           onClick={onLeave}
-          className="flex w-full items-center justify-center gap-1.5 h-11 rounded-xl bg-white/[0.06] text-white text-sm font-medium hover:bg-white/[0.1] transition-all"
+          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-white/[0.06] text-sm font-medium text-white transition-all hover:bg-white/[0.1]"
         >
           <LogOut className="h-4 w-4" />
           Leave Game
@@ -89,9 +85,71 @@ function GameOverScreen({ game, reduceMotion, onLeave }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main GamePage                                                      */
-/* ------------------------------------------------------------------ */
+function PhasePanel({ game, canStartTurn, onStartTurn, countdown }) {
+  const activeName = game?.activeTurn?.playerName || "Player";
+  const activeTeamLabel = game?.activeTeam === "B" ? "Beta" : "Alpha";
+
+  if (game?.status === "waiting_to_start_turn") {
+    return (
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 text-center">
+        <p className="mb-1 text-sm text-neutral-400">Next turn</p>
+        <h2 className="mb-2 text-xl font-bold text-white">{activeName}</h2>
+        <p className="mb-4 text-sm text-neutral-500">Team {activeTeamLabel}</p>
+        {canStartTurn ? (
+          <button
+            type="button"
+            onClick={onStartTurn}
+            className="mx-auto flex h-11 items-center justify-center gap-2 rounded-xl border border-[#3b6ca8]/40 bg-[#1e3a5f]/30 px-4 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]/45"
+          >
+            <Play className="h-4 w-4" />
+            Start Turn
+          </button>
+        ) : (
+          <p className="text-sm text-neutral-400">
+            Waiting for {activeName} to start their turn.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (game?.status === "between_turns") {
+    return (
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 text-center">
+        <p className="mb-2 text-sm text-neutral-400">Turn ended</p>
+        <p className="text-base font-semibold text-white">
+          Next turn: {activeName} from Team {activeTeamLabel}
+        </p>
+        <p className="mt-2 text-sm text-neutral-500">
+          Starting in {countdown}s...
+        </p>
+      </div>
+    );
+  }
+
+  if (game?.status === "between_rounds") {
+    return (
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 text-center">
+        <p className="mb-2 text-sm text-neutral-400">
+          Round {game.roundNumber} complete
+        </p>
+        <p className="text-base font-semibold text-white">
+          Round {game.nextRoundNumber} starts in {countdown}s
+        </p>
+      </div>
+    );
+  }
+
+  if (game) {
+    return (
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 text-center">
+        <p className="text-sm text-neutral-400">Synchronizing turn state</p>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export default function GamePage() {
   const { code } = useParams();
@@ -105,18 +163,42 @@ export default function GamePage() {
     setErrorMessage,
   } = useLobby();
 
-  const [lastAction, setLastAction] = useState(null);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const animTimeoutRef = useRef(null);
-  const prevCardRef = useRef(null);
+  const [guessText, setGuessText] = useState("");
+  const [secondsRemaining, setSecondsRemaining] = useState(0);
+
+  const game = lobbySession?.lobby?.game;
 
   const handleLeave = useCallback(() => {
     clearLobbySession();
     navigate("/");
   }, [clearLobbySession, navigate]);
 
-  /* ------ early returns ------------------------------------------------ */
+  useEffect(() => {
+    const targetTime = game?.turnEndsAt || game?.phaseEndsAt || game?.roundEndsAt;
+    if (!targetTime) {
+      setSecondsRemaining(game?.secondsRemaining ?? 0);
+      return undefined;
+    }
+
+    const tick = () => {
+      const ms = targetTime - Date.now();
+      setSecondsRemaining(Math.max(0, Math.ceil(ms / 1000)));
+    };
+
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [game?.turnEndsAt, game?.phaseEndsAt, game?.roundEndsAt, game?.secondsRemaining]);
+
+  const currentPlayer = useMemo(
+    () =>
+      lobbySession?.lobby?.players?.find(
+        (p) => p.id === lobbySession?.playerId,
+      ) || null,
+    [lobbySession?.lobby?.players, lobbySession?.playerId],
+  );
+
   if (restoreState === "restoring") {
     return (
       <div className="min-h-screen p-6 text-center text-white">
@@ -129,90 +211,37 @@ export default function GamePage() {
     return <Navigate to="/" replace />;
   }
 
-  const game = lobbySession.lobby?.game;
-
-  /* clear animation when a new card arrives via WebSocket */
-  const currentQuestion = game?.currentCard?.question ?? null;
-  if (prevCardRef.current !== null && prevCardRef.current !== currentQuestion) {
-    if (isAnimating) {
-      setIsAnimating(false);
-      setLastAction(null);
-      if (animTimeoutRef.current) {
-        clearTimeout(animTimeoutRef.current);
-        animTimeoutRef.current = null;
-      }
-    }
+  if (!game) {
+    return <Navigate to={`/lobby/${code}`} replace />;
   }
-  prevCardRef.current = currentQuestion;
 
-  const currentPlayer = useMemo(
-    () =>
-      lobbySession.lobby?.players?.find(
-        (p) => p.id === lobbySession.playerId,
-      ) || null,
-    [lobbySession.lobby?.players, lobbySession.playerId],
-  );
+  const colorsA = teamColors("A");
+  const colorsB = teamColors("B");
+  const normalizedStatus =
+    game.status === "in_progress" ? "turn_in_progress" : game.status;
+  const activeTeamColors = teamColors(game.activeTeam || "A");
+  const isOnActiveTeam =
+    currentPlayer && currentPlayer.team === game.activeTeam;
+
+  const fallbackPermissions = {
+    canStartTurn: false,
+    canSubmitGuess: false,
+    canSkipCard: Boolean(isOnActiveTeam),
+    canCallTaboo: Boolean(currentPlayer && !isOnActiveTeam),
+  };
+
+  const permissions = game.permissions || fallbackPermissions;
+  const canStartTurn = Boolean(permissions.canStartTurn);
+  const canSubmitGuess = Boolean(permissions.canSubmitGuess);
+  const canSkipCard = Boolean(permissions.canSkipCard);
+  const canCallTaboo = Boolean(permissions.canCallTaboo);
 
   const roundDuration =
     lobbySession.lobby?.settings?.roundDurationSeconds ?? 60;
-
-  /* ------ timer -------------------------------------------------------- */
-  const [secondsRemaining, setSecondsRemaining] = useState(
-    game?.secondsRemaining ?? 0,
-  );
-
-  useEffect(() => {
-    if (!game || game.status !== "in_progress") {
-      setSecondsRemaining(0);
-      return undefined;
-    }
-
-    const tick = () => {
-      const ms = (game.roundEndsAt || 0) - Date.now();
-      setSecondsRemaining(Math.max(0, Math.ceil(ms / 1000)));
-    };
-
-    tick();
-    const timer = setInterval(tick, 250);
-    return () => clearInterval(timer);
-  }, [game?.status, game?.roundEndsAt]);
-
-  /* ------ cleanup timeout on unmount ----------------------------------- */
-  useEffect(() => {
-    return () => {
-      if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current);
-    };
-  }, []);
-
-  /* ------ derived ------------------------------------------------------ */
-  const canControl =
-    game?.status === "in_progress" &&
-    currentPlayer &&
-    currentPlayer.team === game.activeTeam &&
-    !isAnimating;
-
-  const handleAction = useCallback(
-    (action) => {
-      if (!canControl) return;
-      setErrorMessage("");
-      setIsAnimating(true);
-      setLastAction(
-        action === "guess_correct"
-          ? "correct"
-          : action === "pass_card"
-            ? "pass"
-            : "taboo",
-      );
-      sendLobbyAction({ type: "game_action", action });
-
-      /* safety timeout — clear animation even if WebSocket doesn't respond */
-      animTimeoutRef.current = setTimeout(() => {
-        setIsAnimating(false);
-        setLastAction(null);
-      }, 1500);
-    },
-    [canControl, sendLobbyAction, setErrorMessage],
-  );
+  const timerPercent =
+    normalizedStatus === "turn_in_progress" && roundDuration > 0
+      ? (secondsRemaining / roundDuration) * 100
+      : 0;
 
   const timerColor =
     secondsRemaining <= 10
@@ -221,19 +250,40 @@ export default function GamePage() {
         ? "text-amber-400"
         : "text-white";
 
-  const timerPercent = roundDuration
-    ? (secondsRemaining / roundDuration) * 100
-    : 0;
+  const cardVisibleToViewer =
+    typeof game.cardVisibleToViewer === "boolean"
+      ? game.cardVisibleToViewer
+      : !canSubmitGuess;
 
-  const colorsA = teamColors("A");
-  const colorsB = teamColors("B");
-  const activeTeamColors = teamColors(game?.activeTeam ?? "A");
+  const roleHint =
+    game.roleHint ||
+    (canStartTurn || canSkipCard
+      ? "You are giving clues."
+      : canSubmitGuess
+        ? "Guess the word."
+        : canCallTaboo
+          ? "Watch for taboo words."
+          : "Waiting for active turn.");
 
-  const isPlayerOnActiveTeam =
-    currentPlayer && currentPlayer.team === game?.activeTeam;
+  const handleGameAction = useCallback(
+    (action, payload = {}) => {
+      setErrorMessage("");
+      sendLobbyAction({ type: "game_action", action, ...payload });
+    },
+    [sendLobbyAction, setErrorMessage],
+  );
 
-  /* ------ game over ---------------------------------------------------- */
-  if (game?.status === "finished") {
+  const submitGuess = useCallback(() => {
+    const trimmed = guessText.trim();
+    if (!trimmed || !canSubmitGuess) {
+      return;
+    }
+
+    handleGameAction("submit_guess", { guess: trimmed });
+    setGuessText("");
+  }, [guessText, canSubmitGuess, handleGameAction]);
+
+  if (normalizedStatus === "finished") {
     return (
       <div className="min-h-screen bg-[#0a0f1a] text-white">
         <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#0a0f1a] via-[#0d1220] to-[#0a0f1a]" />
@@ -250,31 +300,12 @@ export default function GamePage() {
     );
   }
 
-  /* ------ in-progress layout ------------------------------------------- */
   return (
-    <div className="min-h-screen bg-[#0a0f1a] text-white flex flex-col">
-      {/* Background */}
+    <div className="flex min-h-screen flex-col bg-[#0a0f1a] text-white">
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#0a0f1a] via-[#0d1220] to-[#0a0f1a]" />
       <div className="pointer-events-none fixed left-1/2 top-0 h-[400px] w-[500px] -translate-x-1/2 rounded-full bg-[#1e3a5f]/15 blur-[100px]" />
       <div className="pointer-events-none fixed bottom-0 left-1/2 h-[300px] w-[400px] -translate-x-1/2 rounded-full bg-[#b73b3b]/10 blur-[100px]" />
 
-      {/* Flash overlay */}
-      <AnimatePresence>
-        {lastAction && !reduceMotion && (
-          <motion.div
-            key="flash"
-            {...motionPresets.flashOverlay}
-            className={cn(
-              "pointer-events-none fixed inset-0 z-40",
-              lastAction === "correct" && "bg-emerald-500/10",
-              lastAction === "pass" && "bg-amber-500/10",
-              lastAction === "taboo" && "bg-red-500/10",
-            )}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Header */}
       <motion.header
         initial={reduceMotion ? false : { opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -293,98 +324,71 @@ export default function GamePage() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-neutral-500">Round</span>
           <span className="text-sm font-semibold text-white">
-            {game?.roundNumber || 0}/{game?.totalRounds || 0}
+            {game.roundNumber || 0}/{game.totalRounds || 0}
           </span>
         </div>
       </motion.header>
 
-      {/* Main */}
       <main
         className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-4"
         data-testid="game-page"
       >
-        {/* Score / Timer row */}
         <motion.section
           {...(reduceMotion ? {} : motionPresets.staggerSection(0))}
           className="mb-4"
         >
           <div className="grid grid-cols-3 gap-2">
-            {/* Team A */}
             <div
               className={cn(
                 "rounded-xl border p-3 transition-all",
-                game?.activeTeam === "A"
+                game.activeTeam === "A"
                   ? colorsA.activeScoreBg
                   : colorsA.inactiveScoreBg,
               )}
             >
-              <div className="mb-1 flex items-center gap-1.5">
-                <div
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    game?.activeTeam === "A"
-                      ? colorsA.dotPulse
-                      : "bg-neutral-600",
-                  )}
-                />
-                <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">
-                  Alpha
-                </p>
-              </div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+                Alpha
+              </p>
               <p className="text-2xl font-bold text-white" aria-live="polite">
-                {game?.scores?.A ?? 0}
+                {game.scores?.A ?? 0}
               </p>
               {currentPlayer?.team === "A" && (
                 <p className={cn("text-[10px]", colorsA.youText)}>You</p>
               )}
             </div>
 
-            {/* Timer */}
             <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
-              <div
-                className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-[#1e3a5f] to-[#3b6ca8] transition-all duration-1000"
-                style={{ width: `${timerPercent}%` }}
-                data-testid="timer-bar"
-              />
+              {normalizedStatus === "turn_in_progress" && (
+                <div
+                  className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-[#1e3a5f] to-[#3b6ca8] transition-all duration-700"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, timerPercent))}%`,
+                  }}
+                  data-testid="timer-bar"
+                />
+              )}
               <Clock className="mx-auto mb-1 h-4 w-4 text-neutral-500" />
-              <p
-                className={cn(
-                  "text-2xl font-bold font-mono transition-colors",
-                  timerColor,
-                )}
-                aria-live="polite"
-              >
+              <p className={cn("text-2xl font-mono font-bold", timerColor)}>
                 {secondsRemaining}
               </p>
             </div>
 
-            {/* Team B */}
             <div
               className={cn(
                 "rounded-xl border p-3 transition-all",
-                game?.activeTeam === "B"
+                game.activeTeam === "B"
                   ? colorsB.activeScoreBg
                   : colorsB.inactiveScoreBg,
               )}
             >
-              <div className="mb-1 flex items-center justify-end gap-1.5">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">
-                  Beta
-                </p>
-                <div
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    game?.activeTeam === "B"
-                      ? colorsB.dotPulse
-                      : "bg-neutral-600",
-                  )}
-                />
-              </div>
+              <p className="mb-1 text-right text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+                Beta
+              </p>
               <p
                 className="text-right text-2xl font-bold text-white"
                 aria-live="polite"
               >
-                {game?.scores?.B ?? 0}
+                {game.scores?.B ?? 0}
               </p>
               {currentPlayer?.team === "B" && (
                 <p className={cn("text-right text-[10px]", colorsB.youText)}>
@@ -395,7 +399,6 @@ export default function GamePage() {
           </div>
         </motion.section>
 
-        {/* Active Team pill */}
         <motion.div
           {...(reduceMotion ? {} : motionPresets.staggerSection(0.05))}
           className="mb-4 flex justify-center"
@@ -413,130 +416,153 @@ export default function GamePage() {
           </div>
         </motion.div>
 
-        {/* Word Card */}
-        <motion.section
-          {...(reduceMotion ? {} : motionPresets.staggerSection(0.1))}
-          className="mb-4 flex-1"
-        >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={game?.currentCard?.question || "empty"}
-              {...(reduceMotion ? {} : motionPresets.cardSwap)}
-              className="flex h-full flex-col rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5 sm:p-6"
-              aria-label="Current card"
+        <p className="mb-3 text-center text-sm text-neutral-400">
+          {roleHint}
+        </p>
+
+        {normalizedStatus !== "turn_in_progress" && (
+          <motion.section
+            {...(reduceMotion ? {} : motionPresets.staggerSection(0.1))}
+            className="mb-4"
+          >
+            <PhasePanel
+              game={{ ...game, status: normalizedStatus }}
+              canStartTurn={canStartTurn}
+              onStartTurn={() => handleGameAction("start_turn")}
+              countdown={secondsRemaining}
+            />
+          </motion.section>
+        )}
+
+        {normalizedStatus === "turn_in_progress" && (
+          <>
+            <motion.section
+              {...(reduceMotion ? {} : motionPresets.staggerSection(0.1))}
+              className="mb-4 flex-1"
             >
-              {/* Category badge */}
-              <div className="mb-4 flex justify-center">
-                <span
-                  className={cn(
-                    "rounded-full bg-white/[0.08] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-neutral-400",
-                    !isPlayerOnActiveTeam && "blur-sm select-none",
-                  )}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={game.currentCard?.id || "hidden"}
+                  {...(reduceMotion ? {} : motionPresets.cardSwap)}
+                  className="flex h-full min-h-[280px] flex-col rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5 sm:p-6"
+                  aria-label="Current card"
                 >
-                  {game?.currentCard?.category || "-"}
-                </span>
-              </div>
+                  {cardVisibleToViewer && game.currentCard ? (
+                    <>
+                      <div className="mb-4 flex justify-center">
+                        <span className="rounded-full bg-white/[0.08] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+                          {game.currentCard.category || "-"}
+                        </span>
+                      </div>
 
-              {/* Main word */}
-              <div className="flex flex-1 items-center justify-center">
-                <h2
-                  className={cn(
-                    "text-center text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl",
-                    !isPlayerOnActiveTeam && "blur-md select-none",
+                      <div className="flex flex-1 items-center justify-center">
+                        <h2 className="text-center text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
+                          {game.currentCard.question || "Waiting"}
+                        </h2>
+                      </div>
+
+                      <div className="mt-4 border-t border-white/[0.06] pt-4">
+                        <p className="mb-3 text-center text-[10px] font-medium uppercase tracking-wider text-red-400/80">
+                          Forbidden Words
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          {(game.currentCard.taboo || []).map((word, index) => (
+                            <motion.span
+                              key={word}
+                              {...(reduceMotion
+                                ? {}
+                                : motionPresets.tabooWord(index))}
+                              className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-300"
+                            >
+                              {word}
+                            </motion.span>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center">
+                      <p className="mb-2 text-lg font-semibold text-white">
+                        Hidden Card
+                      </p>
+                      <p className="text-sm text-neutral-400">
+                        Guess the word from your clue giver.
+                      </p>
+                    </div>
                   )}
-                >
-                  {game?.currentCard?.question || "Waiting"}
-                </h2>
-              </div>
+                </motion.div>
+              </AnimatePresence>
+            </motion.section>
 
-              {/* Non-active overlay hint */}
-              {!isPlayerOnActiveTeam && game?.currentCard && (
-                <p className="mb-2 text-center text-xs text-neutral-500">
-                  Words hidden — it&apos;s the other team&apos;s turn
-                </p>
-              )}
-
-              {/* Taboo words */}
-              <div className="mt-4 border-t border-white/[0.06] pt-4">
-                <p className="mb-3 text-center text-[10px] font-medium uppercase tracking-wider text-red-400/80">
-                  Forbidden Words
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-1.5">
-                  {(game?.currentCard?.taboo || []).map((word, index) => (
-                    <motion.span
-                      key={word}
-                      {...(reduceMotion ? {} : motionPresets.tabooWord(index))}
-                      className={cn(
-                        "rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-300",
-                        !isPlayerOnActiveTeam && "blur-sm select-none",
-                      )}
-                    >
-                      {word}
-                    </motion.span>
-                  ))}
+            <motion.section
+              {...(reduceMotion ? {} : motionPresets.staggerSection(0.2))}
+            >
+              {canSubmitGuess && (
+                <div className="mb-3 flex gap-2">
+                  <input
+                    type="text"
+                    value={guessText}
+                    onChange={(event) => setGuessText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        submitGuess();
+                      }
+                    }}
+                    placeholder="Type your guess..."
+                    className="h-11 flex-1 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[#3b6ca8]/60"
+                    aria-label="Type guess"
+                  />
+                  <button
+                    type="button"
+                    onClick={submitGuess}
+                    className="h-11 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/30"
+                  >
+                    Guess
+                  </button>
                 </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleGameAction("skip_card")}
+                  disabled={!canSkipCard}
+                  className={cn(
+                    "rounded-xl border-2 p-4 font-semibold transition-all",
+                    canSkipCard
+                      ? "border-amber-500/30 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
+                      : "cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-neutral-600",
+                  )}
+                >
+                  <SkipForward className="mx-auto mb-1 h-6 w-6" />
+                  <span className="block text-xs">Skip</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleGameAction("taboo_called")}
+                  disabled={!canCallTaboo}
+                  className={cn(
+                    "rounded-xl border-2 p-4 font-semibold transition-all",
+                    canCallTaboo
+                      ? "border-red-500/30 bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                      : "cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-neutral-600",
+                  )}
+                >
+                  <AlertTriangle className="mx-auto mb-1 h-6 w-6" />
+                  <span className="block text-xs">Taboo</span>
+                </button>
               </div>
-            </motion.div>
-          </AnimatePresence>
-        </motion.section>
 
-        {/* Action Buttons */}
-        <motion.section
-          {...(reduceMotion ? {} : motionPresets.staggerSection(0.2))}
-        >
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleAction("guess_correct")}
-              disabled={!canControl}
-              className={cn(
-                "rounded-xl border-2 p-4 font-semibold transition-all",
-                canControl
-                  ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 active:scale-95"
-                  : "cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-neutral-600",
+              {!canSkipCard && !canCallTaboo && !canSubmitGuess && (
+                <p className="mt-3 text-center text-xs text-neutral-500">
+                  Waiting for the current turn to resolve...
+                </p>
               )}
-            >
-              <Check className="mx-auto mb-1 h-6 w-6" />
-              <span className="block text-xs">Correct</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleAction("pass_card")}
-              disabled={!canControl}
-              className={cn(
-                "rounded-xl border-2 p-4 font-semibold transition-all",
-                canControl
-                  ? "border-amber-500/30 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 active:scale-95"
-                  : "cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-neutral-600",
-              )}
-            >
-              <SkipForward className="mx-auto mb-1 h-6 w-6" />
-              <span className="block text-xs">Pass</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleAction("taboo_called")}
-              disabled={!canControl}
-              className={cn(
-                "rounded-xl border-2 p-4 font-semibold transition-all",
-                canControl
-                  ? "border-red-500/30 bg-red-500/20 text-red-400 hover:bg-red-500/30 active:scale-95"
-                  : "cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-neutral-600",
-              )}
-            >
-              <AlertTriangle className="mx-auto mb-1 h-6 w-6" />
-              <span className="block text-xs">Taboo</span>
-            </button>
-          </div>
-
-          {!isPlayerOnActiveTeam && (
-            <p className="mt-3 text-center text-xs text-neutral-500">
-              Waiting for Team {activeTeamColors.label}...
-            </p>
-          )}
-        </motion.section>
+            </motion.section>
+          </>
+        )}
       </main>
 
       <ConfirmDialog

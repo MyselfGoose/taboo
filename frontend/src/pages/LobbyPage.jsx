@@ -47,7 +47,9 @@ export default function LobbyPage() {
 
   useEffect(() => {
     if (restoreState === "restoring") return;
-    if (lobbySession?.lobby?.game?.status === "in_progress") {
+
+    const gameStatus = lobbySession?.lobby?.game?.status;
+    if (gameStatus) {
       navigate(`/game/${lobbySession.code}`);
     }
   }, [

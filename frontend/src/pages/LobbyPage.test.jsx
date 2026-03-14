@@ -200,7 +200,7 @@ describe("LobbyPage", () => {
               roundDurationSeconds: 60,
               categoryNames: ["Classic"],
             },
-            game: { status: "in_progress" },
+            game: { status: "waiting_to_start_turn" },
           },
         },
       }),

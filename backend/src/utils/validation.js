@@ -85,11 +85,24 @@ function normalizeRoundDurationSeconds(input) {
   return roundDurationSeconds;
 }
 
+function normalizeGuessText(input) {
+  if (typeof input !== "string") {
+    return "";
+  }
+
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 module.exports = {
   normalizePlayerName,
   normalizeLobbyCode,
   normalizeRoundCount,
   normalizeRoundDurationSeconds,
+  normalizeGuessText,
   MIN_ROUNDS,
   MAX_ROUNDS,
   MIN_ROUND_SECONDS,
