@@ -121,11 +121,20 @@ describe("LobbyPage", () => {
       team: "B",
     });
 
-    await user.click(screen.getByRole("button", { name: "I'm Ready" }));
+    await user.click(screen.getByRole("button", { name: "Mark as Ready" }));
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "set_ready",
       ready: true,
     });
+  });
+
+  it("renders readiness tags for each player", () => {
+    mockUseLobby.mockReturnValue(buildLobbyState());
+
+    renderLobby();
+
+    expect(screen.getByText("Not Ready")).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
   });
 
   it("navigates to game when game status becomes in progress", async () => {

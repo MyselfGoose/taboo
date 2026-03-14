@@ -234,3 +234,42 @@ test("setPlayerReady toggles player readiness", () => {
   const alice = updated.players.find((player) => player.name === "Alice");
   assert.equal(alice.ready, true);
 });
+
+test("setPlayerTeam auto-unreadies player when switching teams", () => {
+  const service = createService();
+  const lobby = service.createLobby({ playerName: "Alice", requestId: "r1" });
+
+  service.setPlayerReady({
+    playerName: "Alice",
+    lobbyCode: lobby.code,
+    ready: true,
+    requestId: "r2",
+  });
+
+  const updated = service.setPlayerTeam({
+    playerName: "Alice",
+    lobbyCode: lobby.code,
+    team: "B",
+    requestId: "r3",
+  });
+
+  const alice = updated.players.find((player) => player.name === "Alice");
+  assert.equal(alice.team, "B");
+  assert.equal(alice.ready, false);
+});
+
+test("setPlayerTeam keeps player not ready when already not ready", () => {
+  const service = createService();
+  const lobby = service.createLobby({ playerName: "Alice", requestId: "r1" });
+
+  const updated = service.setPlayerTeam({
+    playerName: "Alice",
+    lobbyCode: lobby.code,
+    team: "B",
+    requestId: "r2",
+  });
+
+  const alice = updated.players.find((player) => player.name === "Alice");
+  assert.equal(alice.team, "B");
+  assert.equal(alice.ready, false);
+});

@@ -418,6 +418,8 @@ class LobbyService {
       throw new AppError("Player not found in lobby.", 404, "PLAYER_NOT_FOUND");
     }
 
+    // Switching teams invalidates prior readiness confirmation.
+    player.ready = false;
     player.team = normalizedTeam;
     player.lastSeenAt = now;
     lobby.updatedAt = now;
@@ -430,6 +432,7 @@ class LobbyService {
       playerName: player.name,
       playerId: player.id,
       team: player.team,
+      ready: player.ready,
     });
 
     return lobby;

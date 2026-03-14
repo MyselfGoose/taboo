@@ -42,12 +42,19 @@ export default function LobbyPage() {
     if (lobbySession?.lobby?.game?.status === "in_progress") {
       navigate(`/game/${lobbySession.code}`);
     }
-  }, [restoreState, lobbySession?.lobby?.game?.status, lobbySession?.code, navigate]);
+  }, [
+    restoreState,
+    lobbySession?.lobby?.game?.status,
+    lobbySession?.code,
+    navigate,
+  ]);
 
   if (restoreState === "restoring") {
     return (
       <div className="min-h-screen bg-[#0a0f1a] text-white flex items-center justify-center">
-        <p className="text-neutral-400 text-sm">Reconnecting to your lobby...</p>
+        <p className="text-neutral-400 text-sm">
+          Reconnecting to your lobby...
+        </p>
       </div>
     );
   }
@@ -125,7 +132,10 @@ export default function LobbyPage() {
         </StatusPill>
       </motion.header>
 
-      <main className="relative z-10 flex-1 flex flex-col px-4 py-4 sm:py-6 max-w-lg mx-auto w-full" data-testid="lobby-page">
+      <main
+        className="relative z-10 flex-1 flex flex-col px-4 py-4 sm:py-6 max-w-lg mx-auto w-full"
+        data-testid="lobby-page"
+      >
         {/* Error */}
         <AnimatePresence>
           {(errorMessage || restoreError) && (
@@ -135,7 +145,9 @@ export default function LobbyPage() {
               exit={{ opacity: 0, y: -10 }}
               className="mb-4 p-3 rounded-xl bg-[#b73b3b]/10 border border-[#b73b3b]/20"
             >
-              <p className="text-sm text-[#c94d4d]" role="alert">{errorMessage || restoreError}</p>
+              <p className="text-sm text-[#c94d4d]" role="alert">
+                {errorMessage || restoreError}
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -145,9 +157,13 @@ export default function LobbyPage() {
           {...(anim ? motionPresets.sectionEnter(0) : {})}
           className="text-center mb-6"
         >
-          <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">Lobby Code</p>
+          <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
+            Lobby Code
+          </p>
           <div className="flex items-center justify-center gap-3">
-            <h1 className="text-4xl sm:text-5xl font-bold tracking-wider font-mono">{lobbySession.code}</h1>
+            <h1 className="text-4xl sm:text-5xl font-bold tracking-wider font-mono">
+              {lobbySession.code}
+            </h1>
             <button
               onClick={copyCode}
               className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-all"
@@ -175,18 +191,24 @@ export default function LobbyPage() {
               <div className="flex items-center gap-2 flex-1">
                 <Target className="w-4 h-4 text-neutral-500" />
                 <span className="text-sm text-neutral-400">Rounds</span>
-                <span className="ml-auto text-sm font-semibold text-white">{lobby.settings?.roundCount}</span>
+                <span className="ml-auto text-sm font-semibold text-white">
+                  {lobby.settings?.roundCount}
+                </span>
               </div>
               <div className="w-px h-4 bg-white/[0.08]" />
               <div className="flex items-center gap-2 flex-1">
                 <Clock className="w-4 h-4 text-neutral-500" />
                 <span className="text-sm text-neutral-400">Time</span>
-                <span className="ml-auto text-sm font-semibold text-white">{lobby.settings?.roundDurationSeconds}s</span>
+                <span className="ml-auto text-sm font-semibold text-white">
+                  {lobby.settings?.roundDurationSeconds}s
+                </span>
               </div>
             </div>
             <div className="pt-3 border-t border-white/[0.06]">
               <p className="text-xs text-neutral-500 mb-1">Categories</p>
-              <p className="text-sm text-white">{lobby.settings?.categoryNames?.join(", ") || "Loading"}</p>
+              <p className="text-sm text-white">
+                {lobby.settings?.categoryNames?.join(", ") || "Loading"}
+              </p>
             </div>
           </div>
         </motion.section>
@@ -196,11 +218,18 @@ export default function LobbyPage() {
           {...(anim ? motionPresets.sectionEnter(0.1) : {})}
           className="mb-4"
         >
-          <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">Choose Team</p>
+          <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
+            Choose Team
+          </p>
+          <p className="text-xs text-neutral-500 mb-3">
+            Switching teams will mark you Not Ready.
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleTeamChange("A")}
+              aria-label="Join Team Alpha"
+              title="Join Team Alpha"
               className={cn(
                 "relative p-3 rounded-xl border-2 transition-all",
                 currentTeam === "A"
@@ -208,9 +237,21 @@ export default function LobbyPage() {
                   : "bg-white/[0.02] border-white/[0.08] hover:border-white/[0.15]",
               )}
             >
-              {currentTeam === "A" && <div className={cn("absolute top-2 right-2 w-2 h-2 rounded-full", teamA.dot)} />}
+              {currentTeam === "A" && (
+                <div
+                  className={cn(
+                    "absolute top-2 right-2 w-2 h-2 rounded-full",
+                    teamA.dot,
+                  )}
+                />
+              )}
               <div className="flex items-center gap-2 mb-1">
-                <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center", teamA.iconBg)}>
+                <div
+                  className={cn(
+                    "w-6 h-6 rounded-lg flex items-center justify-center",
+                    teamA.iconBg,
+                  )}
+                >
                   <Users className={cn("w-3.5 h-3.5", teamA.iconText)} />
                 </div>
                 <span className="font-semibold text-white text-sm">Alpha</span>
@@ -220,6 +261,8 @@ export default function LobbyPage() {
             <button
               type="button"
               onClick={() => handleTeamChange("B")}
+              aria-label="Join Team Beta"
+              title="Join Team Beta"
               className={cn(
                 "relative p-3 rounded-xl border-2 transition-all",
                 currentTeam === "B"
@@ -227,9 +270,21 @@ export default function LobbyPage() {
                   : "bg-white/[0.02] border-white/[0.08] hover:border-white/[0.15]",
               )}
             >
-              {currentTeam === "B" && <div className={cn("absolute top-2 right-2 w-2 h-2 rounded-full", teamB.dot)} />}
+              {currentTeam === "B" && (
+                <div
+                  className={cn(
+                    "absolute top-2 right-2 w-2 h-2 rounded-full",
+                    teamB.dot,
+                  )}
+                />
+              )}
               <div className="flex items-center gap-2 mb-1">
-                <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center", teamB.iconBg)}>
+                <div
+                  className={cn(
+                    "w-6 h-6 rounded-lg flex items-center justify-center",
+                    teamB.iconBg,
+                  )}
+                >
                   <Users className={cn("w-3.5 h-3.5", teamB.iconText)} />
                 </div>
                 <span className="font-semibold text-white text-sm">Beta</span>
@@ -246,10 +301,18 @@ export default function LobbyPage() {
         >
           <div className="grid grid-cols-2 gap-3 h-full">
             {/* Team Alpha */}
-            <div className={cn("p-3 rounded-2xl bg-gradient-to-b to-transparent border", teamA.gradientFrom, teamA.borderFaint)}>
+            <div
+              className={cn(
+                "p-3 rounded-2xl bg-gradient-to-b to-transparent border",
+                teamA.gradientFrom,
+                teamA.borderFaint,
+              )}
+            >
               <div className="flex items-center gap-2 mb-3">
                 <div className={cn("w-2 h-2 rounded-full", teamA.dot)} />
-                <span className="text-xs font-semibold text-white">Team Alpha</span>
+                <span className="text-xs font-semibold text-white">
+                  Team Alpha
+                </span>
               </div>
               <div className="space-y-1.5">
                 <AnimatePresence>
@@ -265,33 +328,56 @@ export default function LobbyPage() {
                           isCurrent ? teamA.highlight : "bg-white/[0.03]",
                         )}
                       >
-                        <div className={cn(
-                          "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
-                          isCurrent ? cn(teamA.avatarBg, "text-white") : "bg-white/10 text-neutral-400",
-                        )}>
+                        <div
+                          className={cn(
+                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                            isCurrent
+                              ? cn(teamA.avatarBg, "text-white")
+                              : "bg-white/10 text-neutral-400",
+                          )}
+                        >
                           {name.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white truncate">
-                            {name} {isCurrent && <span className="text-neutral-500">(You)</span>}
+                            {name}{" "}
+                            {isCurrent && (
+                              <span className="text-neutral-500">(You)</span>
+                            )}
                           </p>
                         </div>
-                        <div className={cn("w-1.5 h-1.5 rounded-full", player?.ready ? "bg-emerald-400" : "bg-amber-400")} />
+                        <StatusPill
+                          variant={player?.ready ? "success" : "warning"}
+                          className="px-2 py-0.5 text-[10px] font-semibold"
+                          aria-label={player?.ready ? "Ready" : "Not Ready"}
+                        >
+                          {player?.ready ? "Ready" : "Not Ready"}
+                        </StatusPill>
                       </motion.div>
                     );
                   })}
                 </AnimatePresence>
                 {(lobby?.teams?.A ?? []).length === 0 && (
-                  <p className="text-xs text-neutral-500 text-center py-2">No players</p>
+                  <p className="text-xs text-neutral-500 text-center py-2">
+                    No players
+                  </p>
                 )}
               </div>
             </div>
 
             {/* Team Beta */}
-            <div className={cn("p-3 rounded-2xl bg-gradient-to-b to-transparent border", teamB.gradientFrom, teamB.borderFaint)}>
+            <div
+              className={cn(
+                "p-3 rounded-2xl bg-gradient-to-b to-transparent border",
+                teamB.gradientFrom,
+                teamB.borderFaint,
+              )}
+            >
               <div className="flex items-center gap-2 mb-3">
                 <div className={cn("w-2 h-2 rounded-full", teamB.dot)} />
-                <span className="text-xs font-semibold text-white">Team Beta</span>
+                <span className="text-xs font-semibold text-white">
+                  Team Beta
+                </span>
               </div>
               <div className="space-y-1.5">
                 <AnimatePresence>
@@ -307,24 +393,39 @@ export default function LobbyPage() {
                           isCurrent ? teamB.highlight : "bg-white/[0.03]",
                         )}
                       >
-                        <div className={cn(
-                          "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
-                          isCurrent ? cn(teamB.avatarBg, "text-white") : "bg-white/10 text-neutral-400",
-                        )}>
+                        <div
+                          className={cn(
+                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                            isCurrent
+                              ? cn(teamB.avatarBg, "text-white")
+                              : "bg-white/10 text-neutral-400",
+                          )}
+                        >
                           {name.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white truncate">
-                            {name} {isCurrent && <span className="text-neutral-500">(You)</span>}
+                            {name}{" "}
+                            {isCurrent && (
+                              <span className="text-neutral-500">(You)</span>
+                            )}
                           </p>
                         </div>
-                        <div className={cn("w-1.5 h-1.5 rounded-full", player?.ready ? "bg-emerald-400" : "bg-amber-400")} />
+                        <StatusPill
+                          variant={player?.ready ? "success" : "warning"}
+                          className="px-2 py-0.5 text-[10px] font-semibold"
+                          aria-label={player?.ready ? "Ready" : "Not Ready"}
+                        >
+                          {player?.ready ? "Ready" : "Not Ready"}
+                        </StatusPill>
                       </motion.div>
                     );
                   })}
                 </AnimatePresence>
                 {(lobby?.teams?.B ?? []).length === 0 && (
-                  <p className="text-xs text-neutral-500 text-center py-2">No players</p>
+                  <p className="text-xs text-neutral-500 text-center py-2">
+                    No players
+                  </p>
                 )}
               </div>
             </div>
@@ -339,6 +440,7 @@ export default function LobbyPage() {
           <button
             type="button"
             onClick={handleReadyChange}
+            aria-pressed={Boolean(currentPlayer?.ready)}
             className={cn(
               "w-full h-12 rounded-xl font-semibold text-sm transition-all",
               currentPlayer?.ready
@@ -361,7 +463,9 @@ export default function LobbyPage() {
             )}
           >
             <Play className="w-4 h-4" />
-            {canStart ? "Start Game" : `Waiting for ${lobby?.players?.filter((p) => !p.ready).length || 0} player(s)...`}
+            {canStart
+              ? "Start Game"
+              : `Waiting for ${lobby?.players?.filter((p) => !p.ready).length || 0} player(s)...`}
             {canStart && <ChevronRight className="w-4 h-4" />}
           </button>
         </motion.section>
