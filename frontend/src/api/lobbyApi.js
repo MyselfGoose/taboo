@@ -1,5 +1,11 @@
+const FALLBACK_API_BASE_URL = "http://127.0.0.1:3000";
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:3000";
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD &&
+  typeof window !== "undefined" &&
+  window.location?.origin
+    ? window.location.origin
+    : FALLBACK_API_BASE_URL);
 
 const CATEGORY_CACHE_TTL_MS = 30 * 1000;
 let categoriesCache = null;

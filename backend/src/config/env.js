@@ -74,8 +74,6 @@ const config = {
   isProduction,
   port: parsePositiveInt(process.env.PORT, 3000),
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
-  sslCertPath: process.env.SSL_CERT_PATH,
-  sslKeyPath: process.env.SSL_KEY_PATH,
   allowedOrigins: parseAllowedOrigins(
     process.env.ALLOWED_ORIGINS,
     isProduction,

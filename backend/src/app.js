@@ -114,39 +114,6 @@ function createApp() {
   app.use(requestIdMiddleware);
   app.use(requestLogger({ logger }));
 
-  app.use((req, res, next) => {
-    if (!config.isProduction) {
-      next();
-      return;
-    }
-
-    if (req.path === "/health" || req.path === "/ready") {
-      next();
-      return;
-    }
-
-    const forwardedProto = req.get("x-forwarded-proto");
-    const firstForwardedProto = forwardedProto
-      ? forwardedProto.split(",")[0].trim()
-      : undefined;
-    const isHttps = req.secure || firstForwardedProto === "https";
-
-    if (isHttps) {
-      next();
-      return;
-    }
-
-    const host = req.get("host");
-    if (!host) {
-      res
-        .status(400)
-        .json({ error: "Invalid Host header", code: "INVALID_HOST" });
-      return;
-    }
-
-    res.redirect(308, `https://${host}${req.originalUrl}`);
-  });
-
   app.use(createHealthRouter({ config }));
 
   const apiLimiter = rateLimit({

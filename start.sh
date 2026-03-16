@@ -70,6 +70,21 @@ read_port_from_env_file() {
   fi
 }
 
+read_var_from_env_file() {
+  local env_file="$1"
+  local var_name="$2"
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
+  local detected
+  detected="$(grep -E "^[[:space:]]*${var_name}=" "$env_file" | tail -n 1 | sed -E "s/^[[:space:]]*${var_name}=//; s/[[:space:]]+$//" | tr -d '"' || true)"
+
+  if [[ -n "$detected" ]]; then
+    printf '%s' "$detected"
+  fi
+}
+
 ensure_valid_port() {
   local name="$1"
   local port="$2"
@@ -164,9 +179,11 @@ wait_for_http() {
     return 0
   fi
 
+  local curl_opts=(--silent --fail --max-time 2)
+
   local end_time=$((SECONDS + timeout_seconds))
   while ((SECONDS < end_time)); do
-    if curl --silent --fail --max-time 2 "$url" >/dev/null 2>&1; then
+    if curl "${curl_opts[@]}" "$url" >/dev/null 2>&1; then
       log_info "$label is ready at $url"
       return 0
     fi
@@ -192,7 +209,8 @@ wait_for_http_any() {
   while ((SECONDS < end_time)); do
     local url
     for url in "${urls[@]}"; do
-      if curl --silent --fail --max-time 2 "$url" >/dev/null 2>&1; then
+      local curl_opts=(--silent --fail --max-time 2)
+      if curl "${curl_opts[@]}" "$url" >/dev/null 2>&1; then
         log_info "$label is ready at $url"
         return 0
       fi

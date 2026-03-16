@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const request = require("supertest");
 
-const { createApp, config } = require("../src/app");
+const { createApp } = require("../src/app");
 
 test("GET /health returns service health payload", async () => {
   const app = createApp();
@@ -48,27 +48,6 @@ test("POST /api/lobbies creates lobby and returns code payload", async () => {
   assert.match(response.body.code, /^[A-Z0-9]{4}$/);
   assert.equal(response.body.lobby.settings.roundCount, 6);
   assert.equal(response.body.lobby.settings.roundDurationSeconds, 120);
-});
-
-test("production mode redirects non-HTTPS requests", async () => {
-  const previous = config.isProduction;
-
-  config.isProduction = true;
-  try {
-    const app = createApp();
-    const response = await request(app)
-      .get("/api/any-endpoint")
-      .set("host", "taboo.example")
-      .set("x-forwarded-proto", "http");
-
-    assert.equal(response.status, 308);
-    assert.equal(
-      response.headers.location,
-      "https://taboo.example/api/any-endpoint",
-    );
-  } finally {
-    config.isProduction = previous;
-  }
 });
 
 test("POST /api/lobbies rejects invalid name", async () => {
