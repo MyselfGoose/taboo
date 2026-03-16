@@ -204,6 +204,55 @@ test("websocket broadcasts lobby member updates in real time", async () => {
 
   assert.equal(tabooState.lobby.game.scores.A, -1);
 
+  const reviewStartedState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.lobby?.game?.review?.status === "in_progress",
+  );
+
+  assert.equal(reviewStartedState.lobby.game.review.penalizedTeam, "A");
+
+  bobSocket.send(
+    JSON.stringify({
+      type: "game_action",
+      action: "review_vote",
+      vote: "not_fair",
+    }),
+  );
+
+  hostSocket.send(
+    JSON.stringify({
+      type: "game_action",
+      action: "review_vote",
+      vote: "not_fair",
+    }),
+  );
+
+  const reviewResolvedState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.lobby?.game?.review?.status === "resolved",
+  );
+
+  assert.equal(reviewResolvedState.lobby.game.review.outcome, "reverted");
+  assert.equal(reviewResolvedState.lobby.game.scores.A, 0);
+
+  bobSocket.send(
+    JSON.stringify({ type: "game_action", action: "review_continue" }),
+  );
+
+  const reviewContinuedState = await waitForMessage(
+    hostSocket,
+    (msg) =>
+      msg.type === "lobby_state" &&
+      msg.reason === "review_continued" &&
+      msg.lobby?.game?.review === null,
+  );
+
+  assert.equal(reviewContinuedState.lobby.game.review, null);
+
   bobSocket.close();
 
   const leftState = await waitForMessage(

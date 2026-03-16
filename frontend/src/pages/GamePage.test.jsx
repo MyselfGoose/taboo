@@ -385,6 +385,233 @@ describe("GamePage", () => {
     });
   });
 
+  it("shows review request button for penalized team", async () => {
+    const sendLobbyAction = vi.fn();
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        sendLobbyAction,
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-1",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "turn_in_progress",
+              roundNumber: 1,
+              totalRounds: 5,
+              activeTeam: "A",
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 2,
+              },
+              scores: { A: 0, B: 0 },
+              turnEndsAt: Date.now() + 30000,
+              phaseEndsAt: null,
+              secondsRemaining: 30,
+              currentCard: {
+                id: "card-1",
+                question: "Sun",
+                category: "Nature",
+                taboo: ["Star", "Hot", "Sky"],
+              },
+              cardVisibleToViewer: true,
+              review: {
+                status: "available",
+                penalizedTeam: "A",
+                tabooCard: {
+                  id: "card-1",
+                  question: "Sun",
+                  category: "Nature",
+                  taboo: ["Star", "Hot", "Sky"],
+                },
+                votes: [],
+                eligibleCount: 0,
+                fairCount: 0,
+                notFairCount: 0,
+              },
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: true,
+                canSkipCard: false,
+                canCallTaboo: false,
+                canRequestReview: true,
+                canVoteReview: false,
+                canContinueAfterReview: false,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderGame();
+
+    await user.click(screen.getByRole("button", { name: /Request Review/i }));
+
+    expect(sendLobbyAction).toHaveBeenCalledWith({
+      type: "game_action",
+      action: "request_review",
+    });
+  });
+
+  it("allows voting during review", async () => {
+    const sendLobbyAction = vi.fn();
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        sendLobbyAction,
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-2",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "turn_in_progress",
+              roundNumber: 1,
+              totalRounds: 5,
+              activeTeam: "A",
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 2,
+              },
+              scores: { A: 0, B: 0 },
+              turnEndsAt: null,
+              phaseEndsAt: null,
+              secondsRemaining: 25,
+              cardVisibleToViewer: true,
+              review: {
+                status: "in_progress",
+                penalizedTeam: "A",
+                tabooCard: {
+                  id: "card-1",
+                  question: "Sun",
+                  category: "Nature",
+                  taboo: ["Star", "Hot", "Sky"],
+                },
+                votes: [
+                  { playerId: "player-1", playerName: "Alice", vote: null },
+                  { playerId: "player-2", playerName: "Bob", vote: null },
+                ],
+                eligibleCount: 2,
+                fairCount: 0,
+                notFairCount: 0,
+              },
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: false,
+                canSkipCard: false,
+                canCallTaboo: false,
+                canRequestReview: false,
+                canVoteReview: true,
+                canContinueAfterReview: false,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderGame();
+
+    await user.click(screen.getByRole("button", { name: /Vote Fair/i }));
+
+    expect(sendLobbyAction).toHaveBeenCalledWith({
+      type: "game_action",
+      action: "review_vote",
+      vote: "fair",
+    });
+  });
+
+  it("allows clue giver to continue after review resolves", async () => {
+    const sendLobbyAction = vi.fn();
+    mockUseLobby.mockReturnValue(
+      buildGameState({
+        sendLobbyAction,
+        lobbySession: {
+          code: "AB12",
+          playerId: "player-1",
+          lobby: {
+            players: [
+              { id: "player-1", name: "Alice", team: "A", ready: true },
+              { id: "player-2", name: "Bob", team: "B", ready: true },
+            ],
+            settings: { roundDurationSeconds: 60 },
+            game: {
+              status: "turn_in_progress",
+              roundNumber: 1,
+              totalRounds: 5,
+              activeTeam: "A",
+              activeTurn: {
+                playerId: "player-1",
+                playerName: "Alice",
+                team: "A",
+                turnIndexInRound: 1,
+                totalTurnsInRound: 2,
+              },
+              scores: { A: 0, B: 0 },
+              turnEndsAt: null,
+              phaseEndsAt: null,
+              secondsRemaining: 20,
+              cardVisibleToViewer: true,
+              review: {
+                status: "resolved",
+                penalizedTeam: "A",
+                tabooCard: {
+                  id: "card-1",
+                  question: "Sun",
+                  category: "Nature",
+                  taboo: ["Star", "Hot", "Sky"],
+                },
+                votes: [
+                  { playerId: "player-1", playerName: "Alice", vote: "fair" },
+                  { playerId: "player-2", playerName: "Bob", vote: "fair" },
+                ],
+                eligibleCount: 2,
+                fairCount: 2,
+                notFairCount: 0,
+                outcome: "upheld",
+              },
+              permissions: {
+                canStartTurn: false,
+                canSubmitGuess: false,
+                canSkipCard: false,
+                canCallTaboo: false,
+                canRequestReview: false,
+                canVoteReview: false,
+                canContinueAfterReview: true,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderGame();
+
+    await user.click(screen.getByRole("button", { name: /Continue Turn/i }));
+
+    expect(sendLobbyAction).toHaveBeenCalledWith({
+      type: "game_action",
+      action: "review_continue",
+    });
+  });
+
   it("shows round transition countdown", () => {
     mockUseLobby.mockReturnValue(
       buildGameState({

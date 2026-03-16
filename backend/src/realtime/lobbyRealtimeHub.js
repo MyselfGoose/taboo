@@ -225,6 +225,7 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
             lobbyCode: ctx.code,
             action: message.action,
             guess: message.guess,
+            vote: message.vote,
             requestId: ctx.requestId,
           });
 

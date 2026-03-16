@@ -295,6 +295,165 @@ function ActivityFeed({ history, reduceMotion }) {
   );
 }
 
+function ReviewPanel({
+  review,
+  permissions,
+  onRequestReview,
+  onVote,
+  onContinue,
+  reduceMotion,
+}) {
+  if (!review || !review.status) {
+    return null;
+  }
+
+  const status = review.status;
+  const penalizedLabel = review.penalizedTeam === "B" ? "Beta" : "Alpha";
+  const calledBy = review.tabooCalledBy?.playerName || "Opponent";
+  const notFairCount = review.notFairCount ?? 0;
+  const fairCount = review.fairCount ?? 0;
+  const eligibleCount = review.eligibleCount ?? 0;
+  const outcome = review.outcome;
+  const votes = Array.isArray(review.votes) ? review.votes : [];
+  const showCard = status === "in_progress" || status === "resolved";
+
+  const motionProps = reduceMotion
+    ? {}
+    : {
+        initial: { opacity: 0, y: 6 },
+        animate: { opacity: 1, y: 0 },
+      };
+
+  return (
+    <motion.section
+      {...motionProps}
+      className="mb-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5"
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-neutral-400">
+            Taboo Review
+          </p>
+          <p className="text-sm font-semibold text-white">
+            {status === "available" && "Review available"}
+            {status === "in_progress" && "Review in progress"}
+            {status === "resolved" && "Review resolved"}
+          </p>
+          <p className="text-xs text-neutral-500">
+            Called by {calledBy} · Team {penalizedLabel} penalized
+          </p>
+        </div>
+        <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-neutral-300">
+          Votes {notFairCount}/{eligibleCount} not fair
+        </span>
+      </div>
+
+      {status === "available" && permissions?.canRequestReview && (
+        <button
+          type="button"
+          onClick={onRequestReview}
+          className="w-full rounded-xl border border-[#3b6ca8]/40 bg-[#1e3a5f]/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]/45"
+        >
+          Request Review
+        </button>
+      )}
+
+      {showCard && review.tabooCard && (
+        <div className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+          <p className="mb-2 text-xs uppercase tracking-wider text-neutral-400">
+            Card Under Review
+          </p>
+          <h3 className="mb-3 text-center text-2xl font-bold text-white">
+            {review.tabooCard.question || "Unknown"}
+          </h3>
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            {(review.tabooCard.taboo || []).map((word) => (
+              <span
+                key={word}
+                className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-300"
+              >
+                {word}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {status === "in_progress" && (
+        <div className="mt-4 space-y-3">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onVote("fair")}
+              disabled={!permissions?.canVoteReview}
+              className="flex-1 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Vote Fair
+            </button>
+            <button
+              type="button"
+              onClick={() => onVote("not_fair")}
+              disabled={!permissions?.canVoteReview}
+              className="flex-1 rounded-xl border border-red-500/40 bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Vote Not Fair
+            </button>
+          </div>
+          <p className="text-xs text-neutral-500">
+            {fairCount} fair · {notFairCount} not fair · {eligibleCount} total
+          </p>
+          <p className="text-[11px] text-neutral-600">
+            At least 80% not fair required to reverse the penalty.
+          </p>
+        </div>
+      )}
+
+      {status === "resolved" && (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm font-semibold text-white">
+            {outcome === "reverted"
+              ? "Review outcome: Taboo reversed"
+              : "Review outcome: Taboo stands"}
+          </p>
+          <p className="text-xs text-neutral-500">
+            {fairCount} fair · {notFairCount} not fair · {eligibleCount} total
+          </p>
+          {permissions?.canContinueAfterReview && (
+            <button
+              type="button"
+              onClick={onContinue}
+              className="w-full rounded-xl border border-[#3b6ca8]/40 bg-[#1e3a5f]/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]/45"
+            >
+              Continue Turn
+            </button>
+          )}
+        </div>
+      )}
+
+      {votes.length > 0 && (
+        <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-neutral-400">
+            Votes
+          </p>
+          <div className="space-y-1 text-xs text-neutral-300">
+            {votes.map((voteEntry) => (
+              <div
+                key={voteEntry.playerId}
+                className="flex items-center justify-between"
+              >
+                <span>{voteEntry.playerName || "Player"}</span>
+                <span className="font-medium capitalize text-neutral-200">
+                  {voteEntry.vote ? voteEntry.vote.replace("_", " ") : "pending"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
 export default function GamePage() {
   const { code } = useParams();
   const navigate = useNavigate();
@@ -378,6 +537,9 @@ export default function GamePage() {
     canSubmitGuess: false,
     canSkipCard: false,
     canCallTaboo: false,
+    canRequestReview: false,
+    canVoteReview: false,
+    canContinueAfterReview: false,
   };
 
   const permissions = game.permissions || fallbackPermissions;
@@ -385,6 +547,9 @@ export default function GamePage() {
   const canSubmitGuess = Boolean(permissions.canSubmitGuess);
   const canSkipCard = Boolean(permissions.canSkipCard);
   const canCallTaboo = Boolean(permissions.canCallTaboo);
+  const canRequestReview = Boolean(permissions.canRequestReview);
+  const canVoteReview = Boolean(permissions.canVoteReview);
+  const canContinueAfterReview = Boolean(permissions.canContinueAfterReview);
 
   const roundDuration =
     lobbySession.lobby?.settings?.roundDurationSeconds ?? 60;
@@ -404,6 +569,10 @@ export default function GamePage() {
     typeof game.cardVisibleToViewer === "boolean"
       ? game.cardVisibleToViewer
       : false;
+  const review = game.review;
+  const reviewStatus = review?.status;
+  const reviewPaused =
+    reviewStatus === "in_progress" || reviewStatus === "resolved";
 
   const handleGameAction = useCallback(
     (action, payload = {}) => {
@@ -422,6 +591,24 @@ export default function GamePage() {
     handleGameAction("submit_guess", { guess: trimmed });
     setGuessText("");
   }, [guessText, canSubmitGuess, handleGameAction]);
+
+  const handleRequestReview = useCallback(() => {
+    if (!canRequestReview) return;
+    handleGameAction("request_review");
+  }, [canRequestReview, handleGameAction]);
+
+  const handleReviewVote = useCallback(
+    (vote) => {
+      if (!canVoteReview) return;
+      handleGameAction("review_vote", { vote });
+    },
+    [canVoteReview, handleGameAction],
+  );
+
+  const handleReviewContinue = useCallback(() => {
+    if (!canContinueAfterReview) return;
+    handleGameAction("review_continue");
+  }, [canContinueAfterReview, handleGameAction]);
 
   if (normalizedStatus === "finished") {
     return (
@@ -560,6 +747,21 @@ export default function GamePage() {
           <RoleBadge viewerRole={game.viewerRole || "spectator"} />
         </div>
 
+        {reviewStatus && (
+          <ReviewPanel
+            review={review}
+            permissions={{
+              canRequestReview,
+              canVoteReview,
+              canContinueAfterReview,
+            }}
+            onRequestReview={handleRequestReview}
+            onVote={handleReviewVote}
+            onContinue={handleReviewContinue}
+            reduceMotion={reduceMotion}
+          />
+        )}
+
         {normalizedStatus !== "turn_in_progress" && (
           <motion.section
             {...(reduceMotion ? {} : motionPresets.staggerSection(0.1))}
@@ -574,7 +776,7 @@ export default function GamePage() {
           </motion.section>
         )}
 
-        {normalizedStatus === "turn_in_progress" && (
+        {normalizedStatus === "turn_in_progress" && !reviewPaused && (
           <>
             <motion.section
               {...(reduceMotion ? {} : motionPresets.staggerSection(0.1))}

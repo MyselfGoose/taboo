@@ -68,6 +68,20 @@ function trimHistory(history, maxEntries = 50) {
   return history.slice(history.length - maxEntries);
 }
 
+function cloneCard(card) {
+  if (!card) {
+    return null;
+  }
+
+  return {
+    id: card.id,
+    question: card.question,
+    taboo: Array.isArray(card.taboo) ? [...card.taboo] : [],
+    categoryId: card.categoryId,
+    category: card.category,
+  };
+}
+
 class LobbyService {
   constructor({
     repository,
@@ -537,6 +551,7 @@ class LobbyService {
         tabooUsed: false,
       },
       deck,
+      review: null,
       history: [],
       lastActionAt: now,
     };
@@ -609,6 +624,26 @@ class LobbyService {
 
     let changed = false;
 
+    if (game.review && typeof game.review !== "object") {
+      game.review = null;
+      changed = true;
+    }
+
+    if (game.review && !["available", "in_progress", "resolved"].includes(game.review.status)) {
+      game.review = null;
+      changed = true;
+    }
+
+    if (game.review && typeof game.review.votes !== "object") {
+      game.review.votes = {};
+      changed = true;
+    }
+
+    if (game.review && !Array.isArray(game.review.eligiblePlayerIds)) {
+      game.review.eligiblePlayerIds = [];
+      changed = true;
+    }
+
     if (!Array.isArray(game.deck)) {
       game.deck = this.ensureDeckForLobby(lobby);
       changed = true;
@@ -680,15 +715,24 @@ class LobbyService {
     }
 
     if (game.status === "turn_in_progress") {
-      const fallbackTurnEndsAt =
-        typeof game.turnEndsAt === "number"
-          ? game.turnEndsAt
-          : typeof game.roundEndsAt === "number"
-            ? game.roundEndsAt
-            : now + lobby.settings.roundDurationSeconds * 1000;
+      const reviewPaused =
+        game.review?.status === "in_progress" ||
+        game.review?.status === "resolved";
 
-      if (game.turnEndsAt !== fallbackTurnEndsAt) {
-        game.turnEndsAt = fallbackTurnEndsAt;
+      if (!reviewPaused) {
+        const fallbackTurnEndsAt =
+          typeof game.turnEndsAt === "number"
+            ? game.turnEndsAt
+            : typeof game.roundEndsAt === "number"
+              ? game.roundEndsAt
+              : now + lobby.settings.roundDurationSeconds * 1000;
+
+        if (game.turnEndsAt !== fallbackTurnEndsAt) {
+          game.turnEndsAt = fallbackTurnEndsAt;
+          changed = true;
+        }
+      } else if (game.turnEndsAt !== null) {
+        game.turnEndsAt = null;
         changed = true;
       }
 
@@ -747,6 +791,24 @@ class LobbyService {
     const game = lobby.game;
     if (!game || game.status === "finished") {
       return;
+    }
+
+    if (game.review && game.review.status === "in_progress") {
+      const activeIds = new Set(lobby.players.map((player) => player.id));
+      const eligible = (game.review.eligiblePlayerIds || []).filter((id) =>
+        activeIds.has(id),
+      );
+      if (eligible.length !== game.review.eligiblePlayerIds.length) {
+        game.review.eligiblePlayerIds = eligible;
+        if (game.review.votes) {
+          for (const id of Object.keys(game.review.votes)) {
+            if (!activeIds.has(id)) {
+              delete game.review.votes[id];
+            }
+          }
+        }
+      }
+      this.resolveReviewIfComplete(lobby, now, "roster_change");
     }
 
     const playersById = new Set(lobby.players.map((player) => player.id));
@@ -866,6 +928,7 @@ class LobbyService {
       pointsEarned: correctGuesses - taboos,
     };
 
+    game.review = null;
     this.drawNextCard(lobby);
 
     const hasMoreTurns = game.turnIndex < game.turnOrder.length - 1;
@@ -945,6 +1008,14 @@ class LobbyService {
         "Guesses can only be submitted during an active turn.",
         409,
         "TURN_NOT_IN_PROGRESS",
+      );
+    }
+
+    if (game.review?.status === "in_progress") {
+      throw new AppError(
+        "Guesses are paused during a review.",
+        409,
+        "REVIEW_IN_PROGRESS",
       );
     }
 
@@ -1029,6 +1100,14 @@ class LobbyService {
       );
     }
 
+    if (game.review?.status === "in_progress") {
+      throw new AppError(
+        "Skipping is paused during a review.",
+        409,
+        "REVIEW_IN_PROGRESS",
+      );
+    }
+
     if (!game.activeTurn || game.activeTurn.playerId !== player.id) {
       throw new AppError(
         "Only the active clue giver can skip the card.",
@@ -1077,6 +1156,14 @@ class LobbyService {
       );
     }
 
+    if (game.review?.status === "in_progress") {
+      throw new AppError(
+        "Taboo cannot be called during a review.",
+        409,
+        "REVIEW_IN_PROGRESS",
+      );
+    }
+
     if (!game.activeTurn || player.team === game.activeTurn.team) {
       throw new AppError(
         "Only the opposing team can call Taboo.",
@@ -1093,11 +1180,14 @@ class LobbyService {
       );
     }
 
+    const tabooCard = cloneCard(game.currentCard);
+    const penalizedTeam = game.activeTurn.team;
+
     game.currentCardMeta = {
       ...game.currentCardMeta,
       tabooUsed: true,
     };
-    game.scores[game.activeTurn.team] -= 1;
+    game.scores[penalizedTeam] -= 1;
 
     this.recordHistory(game, {
       at: now,
@@ -1106,13 +1196,33 @@ class LobbyService {
       team: player.team,
       action: "taboo_called",
       points: -1,
-      penalizedTeam: game.activeTurn.team,
+      penalizedTeam,
       cardId: game.currentCard ? game.currentCard.id : null,
       cardQuestion: game.currentCard ? game.currentCard.question : null,
     });
 
+    const remainingMs =
+      typeof game.turnEndsAt === "number"
+        ? Math.max(0, game.turnEndsAt - now)
+        : 0;
+
     game.lastActionAt = now;
-    this.drawNextCard(lobby);
+    game.turnEndsAt = null;
+    game.phaseEndsAt = null;
+    game.review = {
+      status: "in_progress",
+      tabooCard,
+      tabooCalledBy: {
+        playerId: player.id,
+        playerName: player.name,
+        team: player.team,
+      },
+      penalizedTeam,
+      votes: {},
+      eligiblePlayerIds: lobby.players.map((playerEntry) => playerEntry.id),
+      pausedRemainingMs: remainingMs,
+      outcome: null,
+    };
     lobby.updatedAt = now;
     this.repository.save(lobby);
 
@@ -1122,7 +1232,7 @@ class LobbyService {
       code: lobby.code,
       playerId: player.id,
       action: "taboo_called",
-      penalizedTeam: game.activeTurn.team,
+      penalizedTeam,
       scoreA: game.scores.A,
       scoreB: game.scores.B,
     });
@@ -1133,7 +1243,222 @@ class LobbyService {
     };
   }
 
-  applyGameActionByPlayerId({ lobbyCode, playerId, action, guess, requestId }) {
+  resolveReviewIfComplete(lobby, now, requestId) {
+    const game = lobby.game;
+    const review = game?.review;
+
+    if (!review || review.status !== "in_progress") {
+      return null;
+    }
+
+    const eligible = Array.isArray(review.eligiblePlayerIds)
+      ? review.eligiblePlayerIds
+      : [];
+    if (eligible.length === 0) {
+      return null;
+    }
+
+    const votes = review.votes || {};
+    const eligibleVotes = eligible.filter(
+      (playerId) => votes[playerId] === "fair" || votes[playerId] === "not_fair",
+    );
+
+    if (eligibleVotes.length < eligible.length) {
+      return null;
+    }
+
+    const notFairCount = eligibleVotes.filter(
+      (playerId) => votes[playerId] === "not_fair",
+    ).length;
+    const ratio = notFairCount / eligible.length;
+    const outcome = ratio >= 0.8 ? "reverted" : "upheld";
+
+    if (outcome === "reverted" && review.penalizedTeam) {
+      if (game.scores?.[review.penalizedTeam] === undefined) {
+        game.scores = game.scores || { A: 0, B: 0 };
+        game.scores[review.penalizedTeam] = 0;
+      }
+      game.scores[review.penalizedTeam] += 1;
+    }
+
+    review.status = "resolved";
+    review.outcome = outcome;
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+
+    this.logger.info("Review resolved", {
+      requestId,
+      event: "review_resolved",
+      code: lobby.code,
+      penalizedTeam: review.penalizedTeam,
+      outcome,
+      notFairCount,
+      totalVotes: eligible.length,
+    });
+
+    return {
+      outcome,
+      notFairCount,
+      totalVotes: eligible.length,
+    };
+  }
+
+  requestReview({ lobby, game, player, requestId, now }) {
+    if (game.status !== "turn_in_progress") {
+      throw new AppError(
+        "Review can only be requested during an active turn.",
+        409,
+        "TURN_NOT_IN_PROGRESS",
+      );
+    }
+
+    if (!game.review || game.review.status !== "available") {
+      throw new AppError(
+        "No review is available for the current turn.",
+        409,
+        "REVIEW_NOT_AVAILABLE",
+      );
+    }
+
+    if (player.team !== game.review.penalizedTeam) {
+      throw new AppError(
+        "Only the penalized team can request a review.",
+        403,
+        "REVIEW_NOT_ALLOWED",
+      );
+    }
+
+    const remainingMs =
+      typeof game.turnEndsAt === "number"
+        ? Math.max(0, game.turnEndsAt - now)
+        : 0;
+
+    game.turnEndsAt = null;
+    game.phaseEndsAt = null;
+    game.review.status = "in_progress";
+    game.review.votes = {};
+    game.review.eligiblePlayerIds = lobby.players.map((playerEntry) => playerEntry.id);
+    game.review.pausedRemainingMs = remainingMs;
+    game.review.outcome = null;
+    game.lastActionAt = now;
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+
+    this.logger.info("Review requested", {
+      requestId,
+      event: "review_requested",
+      code: lobby.code,
+      penalizedTeam: game.review.penalizedTeam,
+      remainingMs,
+    });
+
+    return {
+      lobby,
+      reason: "review_started",
+    };
+  }
+
+  applyReviewVote({ lobby, game, player, vote, requestId, now }) {
+    if (!game.review || game.review.status !== "in_progress") {
+      throw new AppError(
+        "Review voting is not active.",
+        409,
+        "REVIEW_NOT_ACTIVE",
+      );
+    }
+
+    const normalizedVote =
+      vote === "not_fair" || vote === "fair" ? vote : null;
+
+    if (!normalizedVote) {
+      throw new AppError("Vote must be fair or not_fair.", 400, "INVALID_VOTE");
+    }
+
+    const eligible = new Set(game.review.eligiblePlayerIds || []);
+    if (!eligible.has(player.id)) {
+      throw new AppError(
+        "You are not eligible to vote on this review.",
+        403,
+        "REVIEW_NOT_ELIGIBLE",
+      );
+    }
+
+    game.review.votes = game.review.votes || {};
+    game.review.votes[player.id] = normalizedVote;
+    game.lastActionAt = now;
+
+    const resolved = this.resolveReviewIfComplete(lobby, now, requestId);
+    if (!resolved) {
+      lobby.updatedAt = now;
+      this.repository.save(lobby);
+    }
+
+    return {
+      lobby,
+      reason: resolved ? "review_resolved" : "review_vote",
+    };
+  }
+
+  continueAfterReview({ lobby, game, player, requestId, now }) {
+    if (!game.review || game.review.status !== "resolved") {
+      throw new AppError(
+        "Review has not been resolved yet.",
+        409,
+        "REVIEW_NOT_RESOLVED",
+      );
+    }
+
+    if (!game.activeTurn || game.activeTurn.playerId !== player.id) {
+      throw new AppError(
+        "Only the active clue giver can continue after review.",
+        403,
+        "REVIEW_CONTINUE_NOT_ALLOWED",
+      );
+    }
+
+    const remainingMs =
+      typeof game.review.pausedRemainingMs === "number"
+        ? Math.max(0, game.review.pausedRemainingMs)
+        : 0;
+
+    if (game.review.outcome === "upheld") {
+      this.drawNextCard(lobby);
+    }
+
+    if (game.review.outcome === "reverted") {
+      game.currentCardMeta = {
+        ...game.currentCardMeta,
+        tabooUsed: false,
+      };
+    }
+
+    game.turnEndsAt = now + remainingMs;
+    game.review = null;
+    game.lastActionAt = now;
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+
+    this.logger.info("Review continued", {
+      requestId,
+      event: "review_continued",
+      code: lobby.code,
+      remainingMs,
+    });
+
+    return {
+      lobby,
+      reason: "review_continued",
+    };
+  }
+
+  applyGameActionByPlayerId({
+    lobbyCode,
+    playerId,
+    action,
+    guess,
+    vote,
+    requestId,
+  }) {
     const now = nowMs();
     const code = normalizeLobbyCode(lobbyCode);
     const lobby = this.repository.getByCode(code);
@@ -1177,6 +1502,25 @@ class LobbyService {
       return this.applyTabooCalled({ lobby, game, player, requestId, now });
     }
 
+    if (action === "request_review") {
+      return this.requestReview({ lobby, game, player, requestId, now });
+    }
+
+    if (action === "review_vote") {
+      return this.applyReviewVote({
+        lobby,
+        game,
+        player,
+        vote,
+        requestId,
+        now,
+      });
+    }
+
+    if (action === "review_continue") {
+      return this.continueAfterReview({ lobby, game, player, requestId, now });
+    }
+
     throw new AppError("Unsupported game action.", 400, "INVALID_GAME_ACTION");
   }
 
@@ -1187,6 +1531,7 @@ class LobbyService {
     lobby.game.phaseEndsAt = null;
     lobby.game.turnStartsAt = null;
     lobby.game.currentCard = null;
+    lobby.game.review = null;
     lobby.updatedAt = now;
     this.repository.save(lobby);
   }
@@ -1273,24 +1618,73 @@ class LobbyService {
     return updates;
   }
 
-  toGameSnapshot(game, now = nowMs(), viewerRole = "spectator") {
+  toGameSnapshot(
+    game,
+    now = nowMs(),
+    viewerRole = "spectator",
+    viewer = null,
+    playerNameById = new Map(),
+  ) {
     if (!game) {
       return null;
     }
 
-    const countdownEndsAt =
-      typeof game.turnEndsAt === "number"
+    const reviewPaused =
+      game.review?.status === "in_progress" ||
+      game.review?.status === "resolved";
+    const countdownEndsAt = reviewPaused
+      ? null
+      : typeof game.turnEndsAt === "number"
         ? game.turnEndsAt
         : typeof game.phaseEndsAt === "number"
           ? game.phaseEndsAt
           : null;
 
-    const secondsRemaining = countdownEndsAt
-      ? Math.max(0, Math.ceil((countdownEndsAt - now) / 1000))
-      : 0;
+    const secondsRemaining = reviewPaused
+      ? Math.max(
+          0,
+          Math.ceil((game.review?.pausedRemainingMs || 0) / 1000),
+        )
+      : countdownEndsAt
+        ? Math.max(0, Math.ceil((countdownEndsAt - now) / 1000))
+        : 0;
 
     const isTurnActive = game.status === "turn_in_progress";
     const shouldHideCard = !isTurnActive || viewerRole === "spectator";
+    const viewerTeam = viewer?.team || null;
+    const viewerId = viewer?.id || null;
+
+    const review = game.review;
+    let reviewSnapshot = null;
+    if (review && review.status) {
+      const eligibleIds = Array.isArray(review.eligiblePlayerIds)
+        ? review.eligiblePlayerIds
+        : [];
+      const voteMap = review.votes || {};
+      const votes = eligibleIds.map((playerId) => ({
+        playerId,
+        playerName: playerNameById.get(playerId),
+        vote: voteMap[playerId] || null,
+      }));
+      const notFairCount = eligibleIds.filter(
+        (playerId) => voteMap[playerId] === "not_fair",
+      ).length;
+      const fairCount = eligibleIds.filter(
+        (playerId) => voteMap[playerId] === "fair",
+      ).length;
+
+      reviewSnapshot = {
+        status: review.status,
+        tabooCard: review.tabooCard || null,
+        tabooCalledBy: review.tabooCalledBy || null,
+        penalizedTeam: review.penalizedTeam || null,
+        votes,
+        eligibleCount: eligibleIds.length,
+        fairCount,
+        notFairCount,
+        outcome: review.outcome || null,
+      };
+    }
 
     return {
       status: game.status,
@@ -1321,7 +1715,7 @@ class LobbyService {
       turnStartsAt: game.turnStartsAt,
       turnEndsAt: game.turnEndsAt,
       phaseEndsAt: game.phaseEndsAt,
-      roundEndsAt: game.turnEndsAt,
+      roundEndsAt: reviewPaused ? null : game.turnEndsAt,
       secondsRemaining,
       viewerRole,
       roleHint:
@@ -1338,19 +1732,36 @@ class LobbyService {
           game.status === "waiting_to_start_turn",
         canSubmitGuess:
           viewerRole === "teammate_guesser" &&
-          game.status === "turn_in_progress",
+          game.status === "turn_in_progress" &&
+          !reviewPaused,
         canSkipCard:
-          viewerRole === "clue_giver" && game.status === "turn_in_progress",
+          viewerRole === "clue_giver" &&
+          game.status === "turn_in_progress" &&
+          !reviewPaused,
         canCallTaboo:
           viewerRole === "opponent_observer" &&
           game.status === "turn_in_progress" &&
-          !game.currentCardMeta?.tabooUsed,
+          !game.currentCardMeta?.tabooUsed &&
+          !reviewPaused,
+        canRequestReview:
+          review?.status === "available" &&
+          Boolean(viewerTeam) &&
+          viewerTeam === review.penalizedTeam,
+        canVoteReview:
+          review?.status === "in_progress" &&
+          Boolean(viewerId) &&
+          (review.eligiblePlayerIds || []).includes(viewerId),
+        canContinueAfterReview:
+          review?.status === "resolved" &&
+          Boolean(viewerId) &&
+          viewerId === game.activeTurn?.playerId,
       },
       currentCard: shouldHideCard ? null : game.currentCard,
       cardVisibleToViewer: !shouldHideCard,
       tabooUsedForCard: Boolean(game.currentCardMeta?.tabooUsed),
       lastTurnSummary: game.lastTurnSummary || null,
       history: Array.isArray(game.history) ? game.history.slice(-12) : [],
+      review: reviewSnapshot,
     };
   }
 
@@ -1378,6 +1789,10 @@ class LobbyService {
       players.length > 0 && players.every((player) => player.ready);
 
     const viewerRole = this.determineViewerRole(lobby, viewerPlayerId);
+    const viewer = viewerPlayerId
+      ? this.findPlayerById(lobby, viewerPlayerId)
+      : null;
+    const playerNameById = new Map(players.map((player) => [player.id, player.name]));
 
     return {
       code: lobby.code,
@@ -1395,7 +1810,13 @@ class LobbyService {
           lobby.settings.categoryIds || [],
         ),
       },
-      game: this.toGameSnapshot(lobby.game, now, viewerRole),
+      game: this.toGameSnapshot(
+        lobby.game,
+        now,
+        viewerRole,
+        viewer,
+        playerNameById,
+      ),
       memberCount: players.length,
       createdAt: lobby.createdAt,
       updatedAt: lobby.updatedAt,
