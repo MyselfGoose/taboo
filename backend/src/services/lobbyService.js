@@ -29,25 +29,28 @@ const NEXT_ROUND_DELAY_MS = 10000;
 function buildTurnOrder(players) {
   const teamA = players.filter((player) => player.team === "A");
   const teamB = players.filter((player) => player.team === "B");
-  const maxLength = Math.max(teamA.length, teamB.length);
+
+  if (teamA.length === 0 || teamB.length === 0) {
+    return [];
+  }
+
+  const turnsPerTeam = Math.max(teamA.length, teamB.length);
   const order = [];
 
-  for (let index = 0; index < maxLength; index += 1) {
-    if (teamA[index]) {
-      order.push({
-        playerId: teamA[index].id,
-        playerName: teamA[index].name,
-        team: "A",
-      });
-    }
+  for (let index = 0; index < turnsPerTeam; index += 1) {
+    const playerA = teamA[index % teamA.length];
+    order.push({
+      playerId: playerA.id,
+      playerName: playerA.name,
+      team: "A",
+    });
 
-    if (teamB[index]) {
-      order.push({
-        playerId: teamB[index].id,
-        playerName: teamB[index].name,
-        team: "B",
-      });
-    }
+    const playerB = teamB[index % teamB.length];
+    order.push({
+      playerId: playerB.id,
+      playerName: playerB.name,
+      team: "B",
+    });
   }
 
   return order;
@@ -524,6 +527,7 @@ class LobbyService {
       activeTurn,
       turnOrder,
       turnIndex: 0,
+      roundStartOffset: 0,
       scores: { A: 0, B: 0 },
       turnStartsAt: null,
       turnEndsAt: null,
@@ -838,6 +842,30 @@ class LobbyService {
 
   advanceToPostTurnPhase(lobby, now, requestId, reason) {
     const game = lobby.game;
+
+    const turnHistory = (game.history || []).filter(
+      (entry) =>
+        entry.playerId === game.activeTurn?.playerId ||
+        (entry.team === game.activeTeam &&
+          entry.at >= (game.turnStartsAt || 0)),
+    );
+    const correctGuesses = turnHistory.filter(
+      (e) => e.action === "submit_guess" && e.matched,
+    ).length;
+    const skips = turnHistory.filter((e) => e.action === "skip_card").length;
+    const taboos = turnHistory.filter(
+      (e) => e.action === "taboo_called",
+    ).length;
+
+    game.lastTurnSummary = {
+      clueGiverName: game.activeTurn?.playerName || "Player",
+      team: game.activeTeam,
+      correctGuesses,
+      skips,
+      taboos,
+      pointsEarned: correctGuesses - taboos,
+    };
+
     this.drawNextCard(lobby);
 
     const hasMoreTurns = game.turnIndex < game.turnOrder.length - 1;
@@ -886,8 +914,12 @@ class LobbyService {
     game.phaseEndsAt = now + NEXT_ROUND_DELAY_MS;
     game.turnStartsAt = null;
     game.turnEndsAt = null;
-    game.turnIndex = 0;
-    game.activeTurn = game.turnOrder[0];
+
+    const nextOffset =
+      ((game.roundStartOffset || 0) + 2) % game.turnOrder.length;
+    game.roundStartOffset = nextOffset;
+    game.turnIndex = nextOffset;
+    game.activeTurn = game.turnOrder[game.turnIndex];
     game.activeTeam = game.activeTurn.team;
     game.lastActionAt = now;
     lobby.updatedAt = now;
@@ -1206,8 +1238,9 @@ class LobbyService {
       game.phaseEndsAt <= now
     ) {
       game.roundNumber += 1;
-      game.turnIndex = 0;
-      game.activeTurn = game.turnOrder[0];
+      const startIdx = game.roundStartOffset || 0;
+      game.turnIndex = startIdx;
+      game.activeTurn = game.turnOrder[startIdx];
       game.activeTeam = game.activeTurn.team;
       game.status = "waiting_to_start_turn";
       game.phaseEndsAt = null;
@@ -1256,7 +1289,8 @@ class LobbyService {
       ? Math.max(0, Math.ceil((countdownEndsAt - now) / 1000))
       : 0;
 
-    const shouldHideCard = viewerRole === "teammate_guesser";
+    const isTurnActive = game.status === "turn_in_progress";
+    const shouldHideCard = !isTurnActive || viewerRole === "teammate_guesser";
 
     return {
       status: game.status,
@@ -1315,6 +1349,7 @@ class LobbyService {
       currentCard: shouldHideCard ? null : game.currentCard,
       cardVisibleToViewer: !shouldHideCard,
       tabooUsedForCard: Boolean(game.currentCardMeta?.tabooUsed),
+      lastTurnSummary: game.lastTurnSummary || null,
       history: Array.isArray(game.history) ? game.history.slice(-12) : [],
     };
   }

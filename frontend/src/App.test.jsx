@@ -15,8 +15,8 @@ function renderApp() {
 
 describe("App routed lobby flow", () => {
   beforeEach(() => {
-    if (typeof window?.localStorage?.removeItem === "function") {
-      window.localStorage.removeItem("taboo-session-v1");
+    if (typeof window?.sessionStorage?.removeItem === "function") {
+      window.sessionStorage.removeItem("taboo-session-v1");
     }
     global.fetch = vi.fn();
     global.fetch.mockImplementation((url) => {

@@ -304,8 +304,10 @@ describe("GamePage", () => {
     const user = userEvent.setup();
     renderGame();
 
-    expect(screen.getByRole("button", { name: "Taboo" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Skip" }));
+    expect(
+      screen.queryByRole("button", { name: /Call Taboo/i }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Skip Card/i }));
 
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "game_action",
@@ -367,8 +369,10 @@ describe("GamePage", () => {
     const user = userEvent.setup();
     renderGame();
 
-    expect(screen.getByRole("button", { name: "Skip" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Taboo" }));
+    expect(
+      screen.queryByRole("button", { name: /Skip Card/i }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Call Taboo/i }));
 
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "game_action",

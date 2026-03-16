@@ -34,8 +34,9 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
 
     for (const socket of sockets) {
       const ctx = socketContext.get(socket);
+      const viewerPlayerId = ctx?.playerId || null;
       const snapshot = lobbyService.toLobbySnapshot(lobby, {
-        viewerPlayerId: ctx?.playerId || null,
+        viewerPlayerId,
       });
       safeSend(socket, {
         type: "lobby_state",
@@ -136,6 +137,15 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
           if (!playerId) {
             throw new Error("Unable to identify player for subscription.");
           }
+
+          logger.info("WebSocket subscribe resolved", {
+            event: "ws_subscribe_resolved",
+            code,
+            playerId,
+            playerName: message.resumeToken ? "(via token)" : message.name,
+            method: message.resumeToken ? "resumeToken" : "name",
+            lobbyPlayerIds: lobby.players.map((p) => p.id),
+          });
 
           let lobbySockets = socketsByLobby.get(code);
           if (!lobbySockets) {

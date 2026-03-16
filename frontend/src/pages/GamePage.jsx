@@ -1,14 +1,19 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
+  CheckCircle2,
   Clock,
+  Eye,
   LogOut,
+  MessageCircle,
+  Mic,
   Play,
   SkipForward,
   Trophy,
   Users,
+  XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
@@ -88,6 +93,7 @@ function GameOverScreen({ game, reduceMotion, onLeave }) {
 function PhasePanel({ game, canStartTurn, onStartTurn, countdown }) {
   const activeName = game?.activeTurn?.playerName || "Player";
   const activeTeamLabel = game?.activeTeam === "B" ? "Beta" : "Alpha";
+  const summary = game?.lastTurnSummary;
 
   if (game?.status === "waiting_to_start_turn") {
     return (
@@ -116,9 +122,25 @@ function PhasePanel({ game, canStartTurn, onStartTurn, countdown }) {
   if (game?.status === "between_turns") {
     return (
       <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 text-center">
-        <p className="mb-2 text-sm text-neutral-400">Turn ended</p>
+        {summary && (
+          <div className="mb-3">
+            <p className="text-sm font-semibold text-white">
+              {summary.clueGiverName} scored{" "}
+              <span className="text-emerald-400">{summary.correctGuesses}</span>{" "}
+              {summary.correctGuesses === 1 ? "point" : "points"} for Team{" "}
+              {summary.team === "B" ? "Beta" : "Alpha"}
+            </p>
+            {summary.taboos > 0 && (
+              <p className="mt-1 text-xs text-red-400">
+                {summary.taboos} taboo{" "}
+                {summary.taboos === 1 ? "penalty" : "penalties"}
+              </p>
+            )}
+          </div>
+        )}
+        <p className="mb-2 text-sm text-neutral-400">Up next</p>
         <p className="text-base font-semibold text-white">
-          Next turn: {activeName} from Team {activeTeamLabel}
+          {activeName} from Team {activeTeamLabel}
         </p>
         <p className="mt-2 text-sm text-neutral-500">
           Starting in {countdown}s...
@@ -133,6 +155,21 @@ function PhasePanel({ game, canStartTurn, onStartTurn, countdown }) {
         <p className="mb-2 text-sm text-neutral-400">
           Round {game.roundNumber} complete
         </p>
+        <div className="mb-3 flex items-center justify-center gap-4">
+          <div className="text-center">
+            <p className="text-xs text-neutral-500">Alpha</p>
+            <p className="text-lg font-bold text-white">
+              {game.scores?.A ?? 0}
+            </p>
+          </div>
+          <span className="text-neutral-600">vs</span>
+          <div className="text-center">
+            <p className="text-xs text-neutral-500">Beta</p>
+            <p className="text-lg font-bold text-white">
+              {game.scores?.B ?? 0}
+            </p>
+          </div>
+        </div>
         <p className="text-base font-semibold text-white">
           Round {game.nextRoundNumber} starts in {countdown}s
         </p>
@@ -149,6 +186,113 @@ function PhasePanel({ game, canStartTurn, onStartTurn, countdown }) {
   }
 
   return null;
+}
+
+const ROLE_BADGES = {
+  clue_giver: {
+    icon: Mic,
+    label: "You're the Clue Giver",
+    className: "border-blue-500/30 bg-blue-500/15 text-blue-300",
+  },
+  teammate_guesser: {
+    icon: MessageCircle,
+    label: "You're Guessing",
+    className: "border-emerald-500/30 bg-emerald-500/15 text-emerald-300",
+  },
+  opponent_observer: {
+    icon: Eye,
+    label: "Monitoring for Taboo",
+    className: "border-red-500/30 bg-red-500/15 text-red-300",
+  },
+  spectator: {
+    icon: Eye,
+    label: "Watching",
+    className: "border-white/10 bg-white/5 text-neutral-400",
+  },
+};
+
+function RoleBadge({ viewerRole }) {
+  const badge = ROLE_BADGES[viewerRole] || ROLE_BADGES.spectator;
+  const Icon = badge.icon;
+  return (
+    <div
+      className={cn(
+        "mx-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+        badge.className,
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {badge.label}
+    </div>
+  );
+}
+
+function ActivityFeed({ history, reduceMotion }) {
+  const feedRef = useRef(null);
+  const entries = (history || []).slice(-8);
+
+  useEffect(() => {
+    if (feedRef.current) {
+      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    }
+  }, [entries.length]);
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      ref={feedRef}
+      className="mt-3 max-h-[140px] overflow-y-auto rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2"
+    >
+      <AnimatePresence initial={false}>
+        {entries.map((entry, idx) => {
+          const key = `${entry.at}-${entry.action}-${idx}`;
+          let icon = null;
+          let text = "";
+          let color = "text-neutral-500";
+
+          if (entry.action === "submit_guess" && entry.matched) {
+            icon = <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />;
+            text = `${entry.playerName} guessed correctly!`;
+            color = "text-emerald-400";
+          } else if (entry.action === "submit_guess") {
+            icon = <XCircle className="h-3.5 w-3.5 text-neutral-500" />;
+            text = `${entry.playerName}: "${entry.guess}"`;
+            color = "text-neutral-500";
+          } else if (entry.action === "skip_card") {
+            icon = <SkipForward className="h-3.5 w-3.5 text-amber-400" />;
+            text = "Card skipped";
+            color = "text-amber-400";
+          } else if (entry.action === "taboo_called") {
+            icon = <AlertTriangle className="h-3.5 w-3.5 text-red-400" />;
+            text = `Taboo! −1 for Team ${entry.penalizedTeam === "B" ? "Beta" : "Alpha"}`;
+            color = "text-red-400";
+          } else if (entry.action === "turn_timeout") {
+            icon = <Clock className="h-3.5 w-3.5 text-neutral-400" />;
+            text = "Time's up!";
+            color = "text-neutral-400";
+          } else {
+            return null;
+          }
+
+          return (
+            <motion.div
+              key={key}
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className={cn("flex items-center gap-2 py-1 text-xs", color)}
+            >
+              {icon}
+              <span className="truncate">{text}</span>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 export default function GamePage() {
@@ -175,7 +319,8 @@ export default function GamePage() {
   }, [clearLobbySession, navigate]);
 
   useEffect(() => {
-    const targetTime = game?.turnEndsAt || game?.phaseEndsAt || game?.roundEndsAt;
+    const targetTime =
+      game?.turnEndsAt || game?.phaseEndsAt || game?.roundEndsAt;
     if (!targetTime) {
       setSecondsRemaining(game?.secondsRemaining ?? 0);
       return undefined;
@@ -189,7 +334,12 @@ export default function GamePage() {
     tick();
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
-  }, [game?.turnEndsAt, game?.phaseEndsAt, game?.roundEndsAt, game?.secondsRemaining]);
+  }, [
+    game?.turnEndsAt,
+    game?.phaseEndsAt,
+    game?.roundEndsAt,
+    game?.secondsRemaining,
+  ]);
 
   const currentPlayer = useMemo(
     () =>
@@ -226,8 +376,8 @@ export default function GamePage() {
   const fallbackPermissions = {
     canStartTurn: false,
     canSubmitGuess: false,
-    canSkipCard: Boolean(isOnActiveTeam),
-    canCallTaboo: Boolean(currentPlayer && !isOnActiveTeam),
+    canSkipCard: false,
+    canCallTaboo: false,
   };
 
   const permissions = game.permissions || fallbackPermissions;
@@ -253,17 +403,7 @@ export default function GamePage() {
   const cardVisibleToViewer =
     typeof game.cardVisibleToViewer === "boolean"
       ? game.cardVisibleToViewer
-      : !canSubmitGuess;
-
-  const roleHint =
-    game.roleHint ||
-    (canStartTurn || canSkipCard
-      ? "You are giving clues."
-      : canSubmitGuess
-        ? "Guess the word."
-        : canCallTaboo
-          ? "Watch for taboo words."
-          : "Waiting for active turn.");
+      : false;
 
   const handleGameAction = useCallback(
     (action, payload = {}) => {
@@ -416,9 +556,9 @@ export default function GamePage() {
           </div>
         </motion.div>
 
-        <p className="mb-3 text-center text-sm text-neutral-400">
-          {roleHint}
-        </p>
+        <div className="mb-3 flex justify-center">
+          <RoleBadge viewerRole={game.viewerRole || "spectator"} />
+        </div>
 
         {normalizedStatus !== "turn_in_progress" && (
           <motion.section
@@ -523,43 +663,38 @@ export default function GamePage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              {canSkipCard && (
                 <button
                   type="button"
                   onClick={() => handleGameAction("skip_card")}
-                  disabled={!canSkipCard}
-                  className={cn(
-                    "rounded-xl border-2 p-4 font-semibold transition-all",
-                    canSkipCard
-                      ? "border-amber-500/30 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
-                      : "cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-neutral-600",
-                  )}
+                  className="w-full rounded-xl border-2 border-amber-500/30 bg-amber-500/20 p-4 font-semibold text-amber-400 transition-all hover:bg-amber-500/30"
                 >
                   <SkipForward className="mx-auto mb-1 h-6 w-6" />
-                  <span className="block text-xs">Skip</span>
+                  <span className="block text-xs">Skip Card</span>
                 </button>
+              )}
 
+              {canCallTaboo && (
                 <button
                   type="button"
                   onClick={() => handleGameAction("taboo_called")}
-                  disabled={!canCallTaboo}
-                  className={cn(
-                    "rounded-xl border-2 p-4 font-semibold transition-all",
-                    canCallTaboo
-                      ? "border-red-500/30 bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                      : "cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-neutral-600",
-                  )}
+                  className="w-full rounded-xl border-2 border-red-500/30 bg-red-500/20 p-4 font-semibold text-red-400 transition-all hover:bg-red-500/30"
                 >
                   <AlertTriangle className="mx-auto mb-1 h-6 w-6" />
-                  <span className="block text-xs">Taboo</span>
+                  <span className="block text-xs">Call Taboo!</span>
                 </button>
-              </div>
+              )}
 
               {!canSkipCard && !canCallTaboo && !canSubmitGuess && (
                 <p className="mt-3 text-center text-xs text-neutral-500">
-                  Waiting for the current turn to resolve...
+                  Watching the current turn...
                 </p>
               )}
+
+              <ActivityFeed
+                history={game.history}
+                reduceMotion={reduceMotion}
+              />
             </motion.section>
           </>
         )}
