@@ -1290,7 +1290,7 @@ class LobbyService {
       : 0;
 
     const isTurnActive = game.status === "turn_in_progress";
-    const shouldHideCard = !isTurnActive || viewerRole === "teammate_guesser";
+    const shouldHideCard = !isTurnActive || viewerRole === "spectator";
 
     return {
       status: game.status,
@@ -1328,7 +1328,7 @@ class LobbyService {
         viewerRole === "clue_giver"
           ? "You are giving clues."
           : viewerRole === "teammate_guesser"
-            ? "Guess the word."
+            ? "Work with your team to guess the word."
             : viewerRole === "opponent_observer"
               ? "Watch for taboo words."
               : "Waiting for active turn.",
