@@ -44,7 +44,8 @@ function createCorsOptions() {
 
       if (
         config.allowedOrigins.includes("*") ||
-        config.allowedOrigins.includes(origin)
+        config.allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app")
       ) {
         callback(null, true);
         return;
