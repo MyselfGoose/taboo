@@ -32,27 +32,24 @@ const { createLobbyRouter } = require("./routes/lobbyRoutes");
 function createCorsOptions() {
   return {
     origin(origin, callback) {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
+  console.log("Incoming origin:", origin)
+  console.log("Allowed origins:", config.allowedOrigins)
 
-      if (!config.isProduction) {
-        callback(null, true);
-        return;
-      }
+  if (!origin) return callback(null, true)
 
-      if (
-        config.allowedOrigins.includes("*") ||
-        config.allowedOrigins.includes(origin) ||
-        origin.endsWith(".vercel.app")
-      ) {
-        callback(null, true);
-        return;
-      }
+  if (!config.isProduction) return callback(null, true)
 
-      callback(new Error("Origin not allowed by CORS"));
-    },
+  if (
+    config.allowedOrigins.includes("*") ||
+    config.allowedOrigins.includes(origin) ||
+    origin.endsWith(".vercel.app")
+  ) {
+    return callback(null, true)
+  }
+
+  console.log("❌ BLOCKED BY CORS:", origin)
+  return callback(null, false)
+}
     methods: ["GET", "POST", "OPTIONS"],
     optionsSuccessStatus: 204,
   };
