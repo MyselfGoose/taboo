@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Sparkles, Users, Zap } from "lucide-react";
 
 import { createLobby, getCategories, joinLobby } from "../api/lobbyApi";
@@ -171,6 +171,14 @@ export default function LandingPage() {
         className="relative z-10 flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8 max-w-md mx-auto w-full"
         data-testid="landing-page"
       >
+        <div className="flex justify-end mb-3">
+          <Link
+            to="/how-to-play"
+            className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-neutral-300 transition hover:bg-white/[0.08] hover:text-white"
+          >
+            How to Play
+          </Link>
+        </div>
         {/* Logo / Header */}
         <motion.div
           initial={anim ? { opacity: 0, y: -10 } : false}
