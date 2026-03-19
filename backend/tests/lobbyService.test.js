@@ -273,3 +273,101 @@ test("setPlayerTeam keeps player not ready when already not ready", () => {
   assert.equal(alice.team, "B");
   assert.equal(alice.ready, false);
 });
+
+test("toLobbySnapshot hides card for teammate guesser", () => {
+  const service = createService();
+  const lobby = service.createLobby({ playerName: "Alice", requestId: "r1" });
+
+  service.joinLobby({
+    playerName: "Bob",
+    lobbyCode: lobby.code,
+    requestId: "r2",
+  });
+  service.joinLobby({
+    playerName: "Cara",
+    lobbyCode: lobby.code,
+    requestId: "r3",
+  });
+
+  service.setPlayerTeam({
+    playerName: "Bob",
+    lobbyCode: lobby.code,
+    team: "A",
+    requestId: "r4",
+  });
+  service.setPlayerTeam({
+    playerName: "Cara",
+    lobbyCode: lobby.code,
+    team: "B",
+    requestId: "r5",
+  });
+
+  service.setPlayerReady({
+    playerName: "Alice",
+    lobbyCode: lobby.code,
+    ready: true,
+    requestId: "r6",
+  });
+  service.setPlayerReady({
+    playerName: "Bob",
+    lobbyCode: lobby.code,
+    ready: true,
+    requestId: "r7",
+  });
+  service.setPlayerReady({
+    playerName: "Cara",
+    lobbyCode: lobby.code,
+    ready: true,
+    requestId: "r8",
+  });
+
+  const started = service.startGameIfAllReady({
+    lobbyCode: lobby.code,
+    requestId: "r9",
+  });
+  assert.equal(started, true);
+
+  const readyLobby = service.getLobby({ lobbyCode: lobby.code });
+  const clueGiverId = readyLobby.game.activeTurn.playerId;
+
+  service.applyGameActionByPlayerId({
+    lobbyCode: lobby.code,
+    playerId: clueGiverId,
+    action: "start_turn",
+    requestId: "r10",
+  });
+
+  const activeLobby = service.getLobby({ lobbyCode: lobby.code });
+  const activeTurn = activeLobby.game.activeTurn;
+  const clueGiver = activeLobby.players.find(
+    (player) => player.id === activeTurn.playerId,
+  );
+  const teammate = activeLobby.players.find(
+    (player) => player.team === clueGiver.team && player.id !== clueGiver.id,
+  );
+  const opponent = activeLobby.players.find(
+    (player) => player.team !== clueGiver.team,
+  );
+
+  assert.ok(teammate);
+  assert.ok(opponent);
+
+  const clueSnapshot = service.toLobbySnapshot(activeLobby, {
+    viewerPlayerId: clueGiver.id,
+  });
+  const teammateSnapshot = service.toLobbySnapshot(activeLobby, {
+    viewerPlayerId: teammate.id,
+  });
+  const opponentSnapshot = service.toLobbySnapshot(activeLobby, {
+    viewerPlayerId: opponent.id,
+  });
+
+  assert.equal(clueSnapshot.game.cardVisibleToViewer, true);
+  assert.ok(clueSnapshot.game.currentCard);
+
+  assert.equal(teammateSnapshot.game.cardVisibleToViewer, false);
+  assert.equal(teammateSnapshot.game.currentCard, null);
+
+  assert.equal(opponentSnapshot.game.cardVisibleToViewer, true);
+  assert.ok(opponentSnapshot.game.currentCard);
+});

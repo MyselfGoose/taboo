@@ -186,7 +186,7 @@ describe("GamePage", () => {
     ).toBeInTheDocument();
   });
 
-  it("teammate can submit typed guess and sees the card", async () => {
+  it("teammate can submit typed guess without seeing the card", async () => {
     const sendLobbyAction = vi.fn();
     mockUseLobby.mockReturnValue(
       buildGameState({
@@ -224,7 +224,7 @@ describe("GamePage", () => {
                 category: "Nature",
                 taboo: ["Star", "Hot", "Sky"],
               },
-              cardVisibleToViewer: true,
+              cardVisibleToViewer: false,
               roleHint: "Work with your team to guess the word.",
               permissions: {
                 canStartTurn: false,
@@ -241,7 +241,7 @@ describe("GamePage", () => {
     const user = userEvent.setup();
     renderGame();
 
-    expect(screen.getByText("Sun")).toBeInTheDocument();
+    expect(screen.getByText("Hidden Card")).toBeInTheDocument();
 
     const input = screen.getByRole("textbox", { name: "Type guess" });
     await user.type(input, "  Sun  ");

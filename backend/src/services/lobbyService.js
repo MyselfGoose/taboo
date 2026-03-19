@@ -1650,7 +1650,10 @@ class LobbyService {
         : 0;
 
     const isTurnActive = game.status === "turn_in_progress";
-    const shouldHideCard = !isTurnActive || viewerRole === "spectator";
+    const shouldHideCard =
+      !isTurnActive ||
+      viewerRole === "spectator" ||
+      viewerRole === "teammate_guesser";
     const viewerTeam = viewer?.team || null;
     const viewerId = viewer?.id || null;
 
