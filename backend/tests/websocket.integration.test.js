@@ -199,15 +199,22 @@ test("websocket broadcasts lobby member updates in real time", async () => {
     (msg) =>
       msg.type === "lobby_state" &&
       msg.reason === "taboo_called" &&
-      msg.lobby?.game?.scores?.A === -1,
+      msg.lobby?.game?.scores?.A === -1 &&
+      msg.lobby?.game?.review?.status === "available",
   );
 
   assert.equal(tabooState.lobby.game.scores.A, -1);
+  assert.equal(tabooState.lobby.game.review.penalizedTeam, "A");
+
+  bobSocket.send(
+    JSON.stringify({ type: "game_action", action: "request_review" }),
+  );
 
   const reviewStartedState = await waitForMessage(
     hostSocket,
     (msg) =>
       msg.type === "lobby_state" &&
+      msg.reason === "review_started" &&
       msg.lobby?.game?.review?.status === "in_progress",
   );
 

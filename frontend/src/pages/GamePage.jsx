@@ -469,6 +469,8 @@ export default function GamePage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [guessText, setGuessText] = useState("");
   const [secondsRemaining, setSecondsRemaining] = useState(0);
+  const [showTabooReviewPrompt, setShowTabooReviewPrompt] = useState(false);
+  const lastPromptedReviewIdRef = useRef(null);
 
   const game = lobbySession?.lobby?.game;
 
@@ -573,6 +575,7 @@ export default function GamePage() {
   const reviewStatus = review?.status;
   const reviewPaused =
     reviewStatus === "in_progress" || reviewStatus === "resolved";
+  const reviewId = review?.id || null;
 
   const handleGameAction = useCallback(
     (action, payload = {}) => {
@@ -597,6 +600,11 @@ export default function GamePage() {
     handleGameAction("request_review");
   }, [canRequestReview, handleGameAction]);
 
+  const handleDismissReview = useCallback(() => {
+    if (!canRequestReview) return;
+    handleGameAction("dismiss_review");
+  }, [canRequestReview, handleGameAction]);
+
   const handleReviewVote = useCallback(
     (vote) => {
       if (!canVoteReview) return;
@@ -609,6 +617,28 @@ export default function GamePage() {
     if (!canContinueAfterReview) return;
     handleGameAction("review_continue");
   }, [canContinueAfterReview, handleGameAction]);
+
+  useEffect(() => {
+    if (reviewStatus !== "available") {
+      setShowTabooReviewPrompt(false);
+      return;
+    }
+
+    if (!canRequestReview) {
+      return;
+    }
+
+    if (!reviewId) {
+      return;
+    }
+
+    if (lastPromptedReviewIdRef.current === reviewId) {
+      return;
+    }
+
+    lastPromptedReviewIdRef.current = reviewId;
+    setShowTabooReviewPrompt(true);
+  }, [canRequestReview, reviewId, reviewStatus]);
 
   if (normalizedStatus === "finished") {
     return (
@@ -747,7 +777,7 @@ export default function GamePage() {
           <RoleBadge viewerRole={game.viewerRole || "spectator"} />
         </div>
 
-        {reviewStatus && (
+        {(reviewStatus === "in_progress" || reviewStatus === "resolved") && (
           <ReviewPanel
             review={review}
             permissions={{
@@ -911,6 +941,23 @@ export default function GamePage() {
         variant="danger"
         onConfirm={handleLeave}
         onCancel={() => setShowLeaveConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showTabooReviewPrompt}
+        title="Taboo Called"
+        description="The opposing team called Taboo. Do you want to request a review, or ignore it and continue?"
+        confirmLabel="Request review"
+        cancelLabel="Ignore"
+        variant="primary"
+        onConfirm={() => {
+          setShowTabooReviewPrompt(false);
+          handleRequestReview();
+        }}
+        onCancel={() => {
+          setShowTabooReviewPrompt(false);
+          handleDismissReview();
+        }}
       />
     </div>
   );

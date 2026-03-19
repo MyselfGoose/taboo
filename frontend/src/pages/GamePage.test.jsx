@@ -385,7 +385,7 @@ describe("GamePage", () => {
     });
   });
 
-  it("shows review request button for penalized team", async () => {
+  it("prompts penalized team to request review", async () => {
     const sendLobbyAction = vi.fn();
     mockUseLobby.mockReturnValue(
       buildGameState({
@@ -423,6 +423,7 @@ describe("GamePage", () => {
               },
               cardVisibleToViewer: true,
               review: {
+                id: "review-1",
                 status: "available",
                 penalizedTeam: "A",
                 tabooCard: {
@@ -454,7 +455,8 @@ describe("GamePage", () => {
     const user = userEvent.setup();
     renderGame();
 
-    await user.click(screen.getByRole("button", { name: /Request Review/i }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Request review/i }));
 
     expect(sendLobbyAction).toHaveBeenCalledWith({
       type: "game_action",

@@ -1207,10 +1207,9 @@ class LobbyService {
         : 0;
 
     game.lastActionAt = now;
-    game.turnEndsAt = null;
-    game.phaseEndsAt = null;
     game.review = {
-      status: "in_progress",
+      id: crypto.randomUUID(),
+      status: "available",
       tabooCard,
       tabooCalledBy: {
         playerId: player.id,
@@ -1219,7 +1218,7 @@ class LobbyService {
       },
       penalizedTeam,
       votes: {},
-      eligiblePlayerIds: lobby.players.map((playerEntry) => playerEntry.id),
+      eligiblePlayerIds: [],
       pausedRemainingMs: remainingMs,
       outcome: null,
     };
@@ -1355,6 +1354,50 @@ class LobbyService {
     return {
       lobby,
       reason: "review_started",
+    };
+  }
+
+  dismissReview({ lobby, game, player, requestId, now }) {
+    if (game.status !== "turn_in_progress") {
+      throw new AppError(
+        "Review can only be dismissed during an active turn.",
+        409,
+        "TURN_NOT_IN_PROGRESS",
+      );
+    }
+
+    if (!game.review || game.review.status !== "available") {
+      throw new AppError(
+        "No review is available for the current turn.",
+        409,
+        "REVIEW_NOT_AVAILABLE",
+      );
+    }
+
+    if (player.team !== game.review.penalizedTeam) {
+      throw new AppError(
+        "Only the penalized team can dismiss this review.",
+        403,
+        "REVIEW_NOT_ALLOWED",
+      );
+    }
+
+    game.review = null;
+    game.lastActionAt = now;
+    lobby.updatedAt = now;
+    this.repository.save(lobby);
+
+    this.logger.info("Review dismissed", {
+      requestId,
+      event: "review_dismissed",
+      code: lobby.code,
+      playerId: player.id,
+      team: player.team,
+    });
+
+    return {
+      lobby,
+      reason: "review_dismissed",
     };
   }
 
@@ -1504,6 +1547,10 @@ class LobbyService {
 
     if (action === "request_review") {
       return this.requestReview({ lobby, game, player, requestId, now });
+    }
+
+    if (action === "dismiss_review") {
+      return this.dismissReview({ lobby, game, player, requestId, now });
     }
 
     if (action === "review_vote") {
@@ -1677,6 +1724,7 @@ class LobbyService {
       ).length;
 
       reviewSnapshot = {
+        id: review.id || null,
         status: review.status,
         tabooCard: review.tabooCard || null,
         tabooCalledBy: review.tabooCalledBy || null,
@@ -1747,6 +1795,10 @@ class LobbyService {
           !game.currentCardMeta?.tabooUsed &&
           !reviewPaused,
         canRequestReview:
+          review?.status === "available" &&
+          Boolean(viewerTeam) &&
+          viewerTeam === review.penalizedTeam,
+        canDismissReview:
           review?.status === "available" &&
           Boolean(viewerTeam) &&
           viewerTeam === review.penalizedTeam,
