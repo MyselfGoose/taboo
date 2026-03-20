@@ -20,7 +20,7 @@ function normalizeCode(code) {
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { lobbySession, restoreState, setLobbySession, setErrorMessage } =
+  const { lobbySession, restoreState, restoreError, setLobbySession, setErrorMessage } =
     useLobby();
   const reduceMotion = useReducedMotion();
 
@@ -36,6 +36,8 @@ export default function LandingPage() {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState("");
+
+  const displayError = localError || restoreError;
 
   const roundOptionLabels = useMemo(
     () =>
@@ -60,7 +62,7 @@ export default function LandingPage() {
       return;
     }
 
-    if (lobbySession.lobby?.game?.status === "in_progress") {
+    if (lobbySession.lobby?.game?.status === "in_progress" || lobbySession.lobby?.game?.status === "turn_in_progress") {
       navigate(`/game/${lobbySession.code}`, { replace: true });
       return;
     }
@@ -252,7 +254,7 @@ export default function LandingPage() {
 
             {/* Error Message */}
             <AnimatePresence>
-              {localError && (
+              {displayError && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
@@ -260,7 +262,7 @@ export default function LandingPage() {
                   className="bg-[#b73b3b]/10 border-b border-[#b73b3b]/20 px-4 py-2.5"
                 >
                   <p className="text-sm text-[#c94d4d]" role="alert">
-                    {localError}
+                    {displayError}
                   </p>
                 </motion.div>
               )}

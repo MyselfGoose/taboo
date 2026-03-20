@@ -1,9 +1,8 @@
 const STORAGE_KEY = "taboo-session-v1";
 
 function getStorage() {
-  // Use sessionStorage so each browser tab has its own isolated session.
-  // This prevents multi-tab collisions where all tabs share one player identity.
-  const storage = window?.sessionStorage;
+  // Use localStorage so the session persists across tabs and forceful browser refreshes.
+  const storage = window?.localStorage;
 
   if (!storage) {
     return null;

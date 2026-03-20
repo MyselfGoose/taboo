@@ -1490,16 +1490,7 @@ class LobbyService {
         ? Math.max(0, game.review.pausedRemainingMs)
         : 0;
 
-    if (game.review.outcome === "upheld") {
-      this.drawNextCard(lobby);
-    }
-
-    if (game.review.outcome === "reverted") {
-      game.currentCardMeta = {
-        ...game.currentCardMeta,
-        tabooUsed: false,
-      };
-    }
+    this.drawNextCard(lobby);
 
     game.turnEndsAt = now + remainingMs;
     game.review = null;
