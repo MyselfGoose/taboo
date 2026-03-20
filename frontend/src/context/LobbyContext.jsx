@@ -13,12 +13,25 @@ export function LobbyProvider({ children }) {
   const [restoreState, setRestoreState] = useState("restoring");
   const [restoreError, setRestoreError] = useState("");
   const [tabTag] = useState(() => getOrCreateTabTag());
+
+  // Socket plumbing refs – never trigger re-renders.
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const pingIntervalRef = useRef(null);
   const pongWatchdogRef = useRef(null);
   const lastPongAtRef = useRef(0);
   const socketEpochRef = useRef(0);
+
+  // isSubscribing: true while a `subscribe` message has been sent but the
+  // server has not yet acknowledged with `subscribed`.  Actions are gated
+  // on this so we never hit the NOT_SUBSCRIBED error.
+  const isSubscribingRef = useRef(false);
+
+  // Latest session values readable inside the WS effect without making them
+  // dependencies (avoids tearing down the socket on every token refresh).
+  const sessionRef = useRef(null);
+
+  // ─── Debug logging ────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!lobbySession?.code) return;
@@ -32,7 +45,10 @@ export function LobbyProvider({ children }) {
     });
   }, [connectionState, lobbySession?.code, lobbySession?.playerName, tabTag]);
 
+  // ─── Session helpers ──────────────────────────────────────────────────────
+
   const setLobbySession = (nextSession) => {
+    sessionRef.current = nextSession;
     setLobbySessionState(nextSession);
     if (nextSession) {
       setRestoreState("restored");
@@ -45,6 +61,8 @@ export function LobbyProvider({ children }) {
       clearSession();
     }
   };
+
+  // ─── Session restore on mount ─────────────────────────────────────────────
 
   useEffect(() => {
     let isMounted = true;
@@ -63,6 +81,7 @@ export function LobbyProvider({ children }) {
         clearSession();
         if (isMounted) {
           setLobbySessionState(null);
+          sessionRef.current = null;
           setRestoreState("restored");
           setRestoreError("");
         }
@@ -79,13 +98,16 @@ export function LobbyProvider({ children }) {
           return;
         }
 
-        setLobbySessionState({
+        const nextSession = {
           code: restored.code,
           playerId: restored.playerId,
           playerName: restored.playerName,
           resumeToken: restored.resumeToken,
           lobby: restored.lobby,
-        });
+        };
+
+        sessionRef.current = nextSession;
+        setLobbySessionState(nextSession);
         saveSession({
           code: restored.code,
           playerId: restored.playerId,
@@ -100,6 +122,7 @@ export function LobbyProvider({ children }) {
         }
 
         clearSession();
+        sessionRef.current = null;
         setLobbySessionState(null);
         setRestoreState("restore-failed");
         setRestoreError(error.message || "Session restore failed.");
@@ -113,6 +136,12 @@ export function LobbyProvider({ children }) {
     };
   }, []);
 
+  // ─── WebSocket lifecycle ──────────────────────────────────────────────────
+  //
+  // Depends only on `lobbySession.code` and `lobbySession.playerName` –
+  // intentionally NOT on `resumeToken` so that the socket is NOT torn down
+  // every time the backend refreshes the token.
+
   useEffect(() => {
     if (!lobbySession?.code || !lobbySession?.playerName) {
       return undefined;
@@ -120,6 +149,7 @@ export function LobbyProvider({ children }) {
 
     let isActive = true;
     let reconnectAttempts = 0;
+
     const WS_READY = {
       CONNECTING: 0,
       OPEN: 1,
@@ -127,20 +157,45 @@ export function LobbyProvider({ children }) {
       CLOSED: 3,
     };
 
+    // ── Teardown helpers ──────────────────────────────────────────────────
+
+    function clearPingTimers() {
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+      if (pongWatchdogRef.current) {
+        clearInterval(pongWatchdogRef.current);
+        pongWatchdogRef.current = null;
+      }
+    }
+
+    // ── Connect / reconnect ───────────────────────────────────────────────
+
     const connect = () => {
       if (!isActive) {
         return;
       }
 
-      // Prevent accidental parallel connections.
+      // Cleanly close the existing socket before opening a new one.
+      // This prevents stale sockets from lingering and consuming server
+      // resources.
       const existing = socketRef.current;
-      if (
-        existing &&
-        (existing.readyState === WS_READY.OPEN ||
-          existing.readyState === WS_READY.CONNECTING ||
-          existing.readyState === WS_READY.CLOSING)
-      ) {
-        return;
+      if (existing) {
+        if (
+          existing.readyState === WS_READY.OPEN ||
+          existing.readyState === WS_READY.CONNECTING
+        ) {
+          // Socket is still alive – don't open a parallel connection.
+          return;
+        }
+        // CLOSING or CLOSED – forcibly clean up.
+        try {
+          existing.close();
+        } catch (_err) {
+          // Already closed.
+        }
+        socketRef.current = null;
       }
 
       socketEpochRef.current += 1;
@@ -149,24 +204,31 @@ export function LobbyProvider({ children }) {
       setConnectionState(
         reconnectAttempts === 0 ? "connecting" : "reconnecting",
       );
+      isSubscribingRef.current = false;
 
       const ws = new WebSocket(getLobbyWebSocketUrl());
       socketRef.current = ws;
 
       ws.addEventListener("open", () => {
         if (!isActive || socketEpochRef.current !== epoch) {
+          ws.close();
           return;
         }
 
+        // Reset backoff on successful connection.
         reconnectAttempts = 0;
         if (reconnectTimerRef.current) {
           clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = null;
         }
-        setConnectionState("connected");
+
+        // Keep `connectionState` as "reconnecting" until `subscribed` is
+        // received – the subscribe handshake is still in flight.
+        isSubscribingRef.current = true;
 
         lastPongAtRef.current = Date.now();
 
+        // App-level ping sent every ~27 s.
         const sendPing = () => {
           const socket = socketRef.current;
           if (
@@ -181,24 +243,16 @@ export function LobbyProvider({ children }) {
           try {
             ws.send(JSON.stringify({ type: "ping", ts: Date.now() }));
           } catch (_err) {
-            // Reconnect logic will handle failures.
+            // Reconnect logic will handle this.
           }
         };
 
-        if (pingIntervalRef.current) {
-          clearInterval(pingIntervalRef.current);
-          pingIntervalRef.current = null;
-        }
-        if (pongWatchdogRef.current) {
-          clearInterval(pongWatchdogRef.current);
-          pongWatchdogRef.current = null;
-        }
+        clearPingTimers();
 
-        // 25–30 seconds.
-        pingIntervalRef.current = setInterval(sendPing, 27000);
+        pingIntervalRef.current = setInterval(sendPing, 27_000);
         pingIntervalRef.current.unref?.();
 
-        // If we don't get pong responses, proactively close.
+        // Watchdog: if >60 s pass without a pong, force-close the socket.
         pongWatchdogRef.current = setInterval(() => {
           const socket = socketRef.current;
           if (
@@ -210,27 +264,33 @@ export function LobbyProvider({ children }) {
           }
 
           const elapsedMs = Date.now() - lastPongAtRef.current;
-          if (elapsedMs > 60000) {
+          if (elapsedMs > 60_000) {
+            // eslint-disable-next-line no-console
+            console.warn("[taboo ws] Pong watchdog triggered – reconnecting.");
             try {
               ws.close();
             } catch (_err) {
               // Ignore.
             }
           }
-        }, 10000);
+        }, 10_000);
         pongWatchdogRef.current.unref?.();
 
+        // Read the latest session values from the ref (not from closure) so
+        // we always send the freshest resumeToken without needing it in the
+        // dependency array.
+        const session = sessionRef.current;
         ws.send(
           JSON.stringify({
             type: "subscribe",
-            code: lobbySession.code,
-            resumeToken: lobbySession.resumeToken,
-            name: lobbySession.playerName,
+            code: session?.code ?? lobbySession?.code,
+            resumeToken: session?.resumeToken ?? lobbySession?.resumeToken,
+            name: session?.playerName ?? lobbySession?.playerName,
           }),
         );
       });
 
-      ws.addEventListener("message", async (event) => {
+      ws.addEventListener("message", (event) => {
         let message;
         try {
           message = JSON.parse(event.data);
@@ -247,16 +307,29 @@ export function LobbyProvider({ children }) {
           return;
         }
 
-        if (message.type === "lobby_state" || message.type === "subscribed") {
+        if (message.type === "subscribed") {
+          // Handshake complete – mark as connected.
+          isSubscribingRef.current = false;
+          setConnectionState("connected");
           setLobbySessionState((current) => {
             if (!current) {
               return current;
             }
+            const next = { ...current, lobby: message.lobby };
+            sessionRef.current = next;
+            saveSession(next);
+            return next;
+          });
+          return;
+        }
 
-            const next = {
-              ...current,
-              lobby: message.lobby,
-            };
+        if (message.type === "lobby_state") {
+          setLobbySessionState((current) => {
+            if (!current) {
+              return current;
+            }
+            const next = { ...current, lobby: message.lobby };
+            sessionRef.current = next;
             saveSession(next);
             return next;
           });
@@ -267,20 +340,21 @@ export function LobbyProvider({ children }) {
           const msg = message.message || "Realtime connection error.";
           const errCode = message.code;
 
-          // If the backend restarted and wiped state, our resume token may
-          // no longer be valid. Clear the stored session so the user can
-          // re-enter the lobby.
+          // Backend restarted and wiped in-memory state; the resume token is
+          // no longer valid. Clear the stored session and surface the error.
           if (
             errCode === "INVALID_SESSION" ||
             errCode === "LOBBY_NOT_FOUND" ||
             errCode === "PLAYER_NOT_FOUND"
           ) {
             clearSession();
+            sessionRef.current = null;
             setLobbySessionState(null);
             setRestoreState("restore-failed");
             setRestoreError(msg);
             setErrorMessage(msg);
             setConnectionState("disconnected");
+            isSubscribingRef.current = false;
             return;
           }
 
@@ -289,19 +363,30 @@ export function LobbyProvider({ children }) {
       });
 
       ws.addEventListener("close", () => {
+        // Guard: if another epoch has already taken over, don't interfere.
         if (!isActive || socketRef.current !== ws) {
           return;
         }
 
+        clearPingTimers();
         setConnectionState("disconnected");
+        isSubscribingRef.current = false;
+
+        // Only close fires reliably (error always precedes close).
+        // Increment here and here only – no double-counting.
         reconnectAttempts += 1;
 
-        const baseDelayMs = 1000;
-        const maxDelayMs = 10000;
-        const retryDelayMs = Math.min(
-          baseDelayMs * 2 ** Math.max(0, reconnectAttempts - 1),
-          maxDelayMs,
-        );
+        const baseDelayMs = 1_000;
+        const maxDelayMs = 15_000;
+        // Exponential backoff + jitter to spread out reconnects after a
+        // backend restart (prevents thundering-herd).
+        const jitterMs = Math.random() * 1_000;
+        const retryDelayMs =
+          Math.min(
+            baseDelayMs * 2 ** Math.max(0, reconnectAttempts - 1),
+            maxDelayMs,
+          ) + jitterMs;
+
         if (reconnectTimerRef.current) {
           clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = null;
@@ -309,25 +394,14 @@ export function LobbyProvider({ children }) {
         reconnectTimerRef.current = setTimeout(connect, retryDelayMs);
       });
 
+      // `error` always fires before `close`. We log it here but do all
+      // cleanup in the `close` handler to prevent double-counting.
       ws.addEventListener("error", () => {
         if (!isActive || socketRef.current !== ws) {
           return;
         }
-        setConnectionState("disconnected");
-        reconnectAttempts += 1;
-
-        const baseDelayMs = 1000;
-        const maxDelayMs = 10000;
-        const retryDelayMs = Math.min(
-          baseDelayMs * 2 ** Math.max(0, reconnectAttempts - 1),
-          maxDelayMs,
-        );
-
-        if (reconnectTimerRef.current) {
-          clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
-        reconnectTimerRef.current = setTimeout(connect, retryDelayMs);
+        // eslint-disable-next-line no-console
+        console.warn("[taboo ws] WebSocket error – waiting for close event.");
       });
     };
 
@@ -335,28 +409,41 @@ export function LobbyProvider({ children }) {
 
     return () => {
       isActive = false;
+      isSubscribingRef.current = false;
+
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
-      if (pingIntervalRef.current) {
-        clearInterval(pingIntervalRef.current);
-        pingIntervalRef.current = null;
-      }
-      if (pongWatchdogRef.current) {
-        clearInterval(pongWatchdogRef.current);
-        pongWatchdogRef.current = null;
-      }
+
+      clearPingTimers();
+
       if (socketRef.current) {
-        socketRef.current.close();
+        try {
+          socketRef.current.close();
+        } catch (_err) {
+          // Ignore.
+        }
         socketRef.current = null;
       }
+
       setConnectionState("disconnected");
     };
-  }, [lobbySession?.code, lobbySession?.playerName, lobbySession?.resumeToken]);
+    // Intentionally omit `lobbySession.resumeToken` from deps – reading from
+    // `sessionRef` inside the effect to avoid reconnect storms on token refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lobbySession?.code, lobbySession?.playerName]);
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
 
   const sendLobbyAction = (payload) => {
     const socket = socketRef.current;
+
+    // Gate actions while subscribe handshake is in flight.
+    if (isSubscribingRef.current) {
+      setErrorMessage("Reconnecting… please wait a moment.");
+      return false;
+    }
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       setErrorMessage(
@@ -370,8 +457,14 @@ export function LobbyProvider({ children }) {
   };
 
   const clearLobbySession = () => {
+    isSubscribingRef.current = false;
+
     if (socketRef.current) {
-      socketRef.current.close();
+      try {
+        socketRef.current.close();
+      } catch (_err) {
+        // Ignore.
+      }
       socketRef.current = null;
     }
     if (reconnectTimerRef.current) {
@@ -387,6 +480,7 @@ export function LobbyProvider({ children }) {
       pongWatchdogRef.current = null;
     }
 
+    sessionRef.current = null;
     setLobbySessionState(null);
     clearSession();
     setRestoreState("restored");
@@ -394,6 +488,8 @@ export function LobbyProvider({ children }) {
     setConnectionState("disconnected");
     setErrorMessage("");
   };
+
+  // ─── Context value ────────────────────────────────────────────────────────
 
   const value = useMemo(
     () => ({

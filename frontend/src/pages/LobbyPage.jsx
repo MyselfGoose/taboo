@@ -69,6 +69,24 @@ export default function LobbyPage() {
     );
   }
 
+  // If the player has a valid session for this lobby but is temporarily
+  // disconnected, show an overlay rather than redirecting to the landing page.
+  // The WebSocket reconnect loop will restore state automatically.
+  const isReconnectingForThisLobby =
+    lobbySession?.code === code &&
+    lobbySession?.playerName &&
+    (connectionState === "reconnecting" || connectionState === "disconnected");
+
+  if (isReconnectingForThisLobby && restoreState !== "restoring") {
+    return (
+      <div className="min-h-screen bg-[#0a0f1a] text-white flex items-center justify-center">
+        <p className="text-neutral-400 text-sm animate-pulse">
+          Reconnecting to your lobby…
+        </p>
+      </div>
+    );
+  }
+
   if (!lobbySession || !lobbySession.playerName || lobbySession.code !== code) {
     return <Navigate to={`/?code=${code}`} replace />;
   }

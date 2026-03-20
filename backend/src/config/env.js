@@ -99,6 +99,12 @@ const config = {
   sessionDbFileName: process.env.SESSION_DB_FILE || "sessions.db",
   sessionTtlMs:
     parsePositiveInt(process.env.SESSION_TTL_MINUTES, 120) * 60 * 1000,
+  // How long (ms) a disconnected player's slot is held before they are
+  // removed from the lobby. Set to 0 to remove immediately.
+  playerDisconnectGraceMs: parsePositiveInt(
+    process.env.PLAYER_DISCONNECT_GRACE_MS,
+    30_000,
+  ),
 };
 
 module.exports = {

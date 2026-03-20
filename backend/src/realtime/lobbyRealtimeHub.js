@@ -6,10 +6,6 @@ const {
   normalizePlayerName,
 } = require("../utils/validation");
 
-function keyForMember(code, playerId) {
-  return `${code}:${playerId}`;
-}
-
 function safeSend(socket, payload) {
   if (socket.readyState !== socket.OPEN) {
     return;
@@ -18,11 +14,29 @@ function safeSend(socket, payload) {
   socket.send(JSON.stringify(payload));
 }
 
-function createLobbyRealtimeHub({ server, lobbyService, logger }) {
+function createLobbyRealtimeHub({ server, lobbyService, logger, config }) {
+  const disconnectGraceMs =
+    config?.playerDisconnectGraceMs ?? 30_000;
+
   const wss = new WebSocketServer({ server, path: "/ws" });
+
+  // code → Set<socket>
   const socketsByLobby = new Map();
-  const memberConnectionCount = new Map();
+
+  // `${code}:${playerId}` → socket  (the one canonical live socket)
+  const socketByPlayer = new Map();
+
+  // `${code}:${playerId}` → TimeoutId  (pending disconnect grace timer)
+  const disconnectTimers = new Map();
+
+  // WeakMap so GC can clean up when socket is gone
   const socketContext = new WeakMap();
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  function playerKey(code, playerId) {
+    return `${code}:${playerId}`;
+  }
 
   function broadcastLobbyState(code, reason) {
     const lobby = lobbyService.getLobby({ lobbyCode: code });
@@ -46,42 +60,158 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
     }
   }
 
-  function removeSocketFromLobby(socket, reason) {
+  /**
+   * Cancel any pending disconnect grace timer for a player.
+   * Call this when the player's new socket subscribes successfully.
+   */
+  function cancelDisconnectTimer(code, playerId) {
+    const key = playerKey(code, playerId);
+    const timer = disconnectTimers.get(key);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      disconnectTimers.delete(key);
+      logger.info("Disconnect grace timer cancelled (player reconnected)", {
+        event: "ws_reconnect_grace_cancelled",
+        code,
+        playerId,
+      });
+    }
+  }
+
+  /**
+   * Immediately deregister a socket from the lobby structures.
+   * Does NOT touch player data in the lobby service (use the grace timer for
+   * that so brief blips do not visibly remove a player from others' screens).
+   */
+  function detachSocket(socket) {
     const ctx = socketContext.get(socket);
-    if (!ctx || !ctx.code || !ctx.playerId) {
+    if (!ctx?.code || !ctx?.playerId) {
       return;
     }
 
-    const sockets = socketsByLobby.get(ctx.code);
+    const { code, playerId } = ctx;
+
+    // Remove from the per-lobby socket set.
+    const sockets = socketsByLobby.get(code);
     if (sockets) {
       sockets.delete(socket);
       if (sockets.size === 0) {
-        socketsByLobby.delete(ctx.code);
+        socketsByLobby.delete(code);
       }
     }
 
-    const memberKey = keyForMember(ctx.code, ctx.playerId);
-    const nextCount = (memberConnectionCount.get(memberKey) || 1) - 1;
-
-    if (nextCount <= 0) {
-      memberConnectionCount.delete(memberKey);
-      const lobby = lobbyService.getLobby({ lobbyCode: ctx.code });
-
-      if (lobby) {
-        try {
-          broadcastLobbyState(ctx.code, reason || "member_disconnected");
-        } catch (error) {
-          logger.warn("Lobby broadcast skipped after disconnect", {
-            event: "ws_broadcast_skip",
-            code: ctx.code,
-            message: error.message,
-          });
-        }
-      }
-    } else {
-      memberConnectionCount.set(memberKey, nextCount);
+    // Only remove the canonical player→socket entry if it is still this socket
+    // (it may have already been replaced by a newer socket during reconnect).
+    const key = playerKey(code, playerId);
+    if (socketByPlayer.get(key) === socket) {
+      socketByPlayer.delete(key);
     }
   }
+
+  /**
+   * Handle a socket's final departure (called after the grace period).
+   * Removes the player from the lobby, then broadcasts so other players see
+   * the updated member list.
+   */
+  function finaliseDisconnect(code, playerId, reason) {
+    disconnectTimers.delete(playerKey(code, playerId));
+
+    // Only remove if the player is still in the lobby (i.e., they did not
+    // reconnect and voluntarily leave themselves).
+    try {
+      const lobby = lobbyService.getLobby({ lobbyCode: code });
+      if (!lobby) {
+        return;
+      }
+
+      const player = lobbyService.findPlayerById(lobby, playerId);
+      if (player) {
+        lobbyService.removeLobbyMember({
+          playerName: player.name,
+          lobbyCode: code,
+          requestId: `ws_disconnect_${playerId}`,
+        });
+      }
+
+      logger.info("Player removed after disconnect grace", {
+        event: "ws_disconnect_grace_expired",
+        code,
+        playerId,
+        reason,
+      });
+    } catch (error) {
+      logger.warn("Error removing player after disconnect", {
+        event: "ws_disconnect_remove_error",
+        code,
+        playerId,
+        message: error.message,
+      });
+      return;
+    }
+
+    try {
+      broadcastLobbyState(code, reason || "member_disconnected");
+    } catch (error) {
+      logger.warn("Lobby broadcast skipped after disconnect finalise", {
+        event: "ws_broadcast_skip",
+        code,
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Called when a socket closes or errors. Schedules the grace-period timer.
+   * If the player reconnects within the window, the timer is cancelled.
+   */
+  function scheduleDisconnect(socket, closeReason) {
+    const ctx = socketContext.get(socket);
+    if (!ctx?.code || !ctx?.playerId) {
+      return;
+    }
+
+    const { code, playerId } = ctx;
+
+    detachSocket(socket);
+
+    const key = playerKey(code, playerId);
+
+    // If another socket for the same player is already live, don't schedule.
+    if (socketByPlayer.has(key)) {
+      return;
+    }
+
+    // If a timer is already running (e.g. from a previous quick drop), leave it.
+    if (disconnectTimers.has(key)) {
+      return;
+    }
+
+    if (disconnectGraceMs <= 0) {
+      // No grace period – finalise immediately.
+      finaliseDisconnect(code, playerId, closeReason);
+      return;
+    }
+
+    logger.info("Scheduling disconnect grace timer", {
+      event: "ws_disconnect_grace_start",
+      code,
+      playerId,
+      graceMs: disconnectGraceMs,
+    });
+
+    const timer = setTimeout(() => {
+      finaliseDisconnect(code, playerId, closeReason);
+    }, disconnectGraceMs);
+
+    // Allow Node to exit cleanly even if this timer is pending.
+    if (typeof timer.unref === "function") {
+      timer.unref();
+    }
+
+    disconnectTimers.set(key, timer);
+  }
+
+  // ─── Connection handler ───────────────────────────────────────────────────
 
   wss.on("connection", (socket) => {
     const requestId = crypto.randomUUID();
@@ -115,11 +245,11 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
       }
 
       try {
+        // ── ping / pong ──────────────────────────────────────────────────
         if (message.type === "ping") {
           socket.lastAppPongAt = Date.now();
           socket.appPongsSent += 1;
 
-          // Throttle logs to avoid flooding.
           if (socket.appPongsSent % 10 === 0) {
             logger.info("App-level pong sent", {
               event: "ws_app_pong",
@@ -137,10 +267,10 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
         }
 
         if (message.type === "pong") {
-          // Client-initiated pong is ignored; server sends pings.
           return;
         }
 
+        // ── subscribe ────────────────────────────────────────────────────
         if (message.type === "subscribe") {
           let code;
           let playerId;
@@ -170,6 +300,41 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
             throw new Error("Unable to identify player for subscription.");
           }
 
+          const pKey = playerKey(code, playerId);
+
+          // ── Ghost-player prevention ──────────────────────────────────
+          // If there is already a live socket for this player, terminate it
+          // before registering the new one.
+          const existingSocket = socketByPlayer.get(pKey);
+          if (existingSocket && existingSocket !== socket) {
+            logger.info("Terminating stale socket for reconnecting player", {
+              event: "ws_stale_socket_terminated",
+              code,
+              playerId,
+              requestId,
+            });
+            try {
+              existingSocket.terminate();
+            } catch (_err) {
+              // Already gone – ignore.
+            }
+            // Detach the stale socket from our tracking structures.
+            detachSocket(existingSocket);
+          }
+
+          // Cancel any pending grace-period disconnect timer.
+          cancelDisconnectTimer(code, playerId);
+
+          // Register this socket.
+          let lobbySockets = socketsByLobby.get(code);
+          if (!lobbySockets) {
+            lobbySockets = new Set();
+            socketsByLobby.set(code, lobbySockets);
+          }
+          lobbySockets.add(socket);
+          socketByPlayer.set(pKey, socket);
+          socketContext.set(socket, { code, playerId, requestId });
+
           logger.info("WebSocket subscribe resolved", {
             event: "ws_subscribe_resolved",
             code,
@@ -178,26 +343,6 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
             method: message.resumeToken ? "resumeToken" : "name",
             lobbyPlayerIds: lobby.players.map((p) => p.id),
           });
-
-          let lobbySockets = socketsByLobby.get(code);
-          if (!lobbySockets) {
-            lobbySockets = new Set();
-            socketsByLobby.set(code, lobbySockets);
-          }
-
-          const previousCtx = socketContext.get(socket);
-          if (previousCtx && previousCtx.code && previousCtx.playerId) {
-            removeSocketFromLobby(socket, "member_moved");
-          }
-
-          lobbySockets.add(socket);
-          socketContext.set(socket, { code, playerId, requestId });
-
-          const memberKey = keyForMember(code, playerId);
-          memberConnectionCount.set(
-            memberKey,
-            (memberConnectionCount.get(memberKey) || 0) + 1,
-          );
 
           safeSend(socket, {
             type: "subscribed",
@@ -210,6 +355,7 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
           return;
         }
 
+        // ── Authenticated actions ────────────────────────────────────────
         const ctx = socketContext.get(socket);
         if (!ctx?.code || !ctx?.playerId) {
           safeSend(socket, {
@@ -282,20 +428,23 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
       }
     });
 
+    // Only `close` fires reliably for every departure; `error` always
+    // precedes `close`, so we do all cleanup here to avoid double-handling.
     socket.on("close", () => {
       logger.info("WebSocket connection closed", {
         event: "ws_client_disconnected",
         requestId,
       });
-      removeSocketFromLobby(socket, "member_left");
+      scheduleDisconnect(socket, "member_left");
     });
 
     socket.on("error", (error) => {
-      logger.warn("Websocket client error", {
+      logger.warn("WebSocket client error", {
         event: "ws_client_error",
         message: error.message,
         requestId,
       });
+      // `close` fires immediately after `error`; cleanup happens there.
     });
 
     logger.info("WebSocket connection opened", {
@@ -304,6 +453,9 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
     });
   });
 
+  // ─── Background timers ────────────────────────────────────────────────────
+
+  // WS-level heartbeat: detect zombie connections via TCP-level ping.
   const heartbeat = setInterval(() => {
     for (const socket of wss.clients) {
       if (socket.isAlive === false) {
@@ -314,8 +466,9 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
       socket.isAlive = false;
       socket.ping();
     }
-  }, 30000);
+  }, 30_000);
 
+  // Game state ticker: advance timers (turn timeouts, between-round delays).
   const gameTicker = setInterval(() => {
     const updates = lobbyService.advanceExpiredGames(Date.now());
     for (const update of updates) {
@@ -338,6 +491,13 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
     close() {
       clearInterval(heartbeat);
       clearInterval(gameTicker);
+
+      // Cancel all pending grace timers so tests can shut down cleanly.
+      for (const timer of disconnectTimers.values()) {
+        clearTimeout(timer);
+      }
+      disconnectTimers.clear();
+
       wss.close();
     },
   };

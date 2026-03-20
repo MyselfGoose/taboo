@@ -54,6 +54,8 @@ test("websocket broadcasts lobby member updates in real time", async () => {
     server,
     lobbyService: app.locals.lobbyService,
     logger: { info() {}, warn() {}, error() {} },
+    // Disable the grace period in tests so disconnect broadcasts are immediate.
+    config: { playerDisconnectGraceMs: 0 },
   });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
