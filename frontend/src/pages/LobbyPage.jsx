@@ -98,6 +98,11 @@ export default function LobbyPage() {
       return;
     }
 
+    if (connectionState !== "connected") {
+      setErrorMessage("Reconnecting…");
+      return;
+    }
+
     if (team === currentPlayer.team) {
       return;
     }
@@ -113,6 +118,10 @@ export default function LobbyPage() {
 
   const handleReadyChange = () => {
     setErrorMessage("");
+    if (connectionState !== "connected") {
+      setErrorMessage("Reconnecting…");
+      return;
+    }
     sendLobbyAction({ type: "set_ready", ready: !currentPlayer?.ready });
   };
 

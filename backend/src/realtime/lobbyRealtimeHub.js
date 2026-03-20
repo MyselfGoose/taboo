@@ -90,9 +90,19 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
   wss.on("connection", (socket) => {
     const requestId = crypto.randomUUID();
     socket.isAlive = true;
+    socket.wsPongsReceived = 0;
+    socket.appPongsSent = 0;
+    socket.lastAppPongAt = null;
 
     socket.on("pong", () => {
       socket.isAlive = true;
+      socket.wsPongsReceived += 1;
+      if (socket.wsPongsReceived % 10 === 0) {
+        logger.info("WebSocket pong received", {
+          event: "ws_pong",
+          requestId,
+        });
+      }
     });
 
     socket.on("message", (rawMessage) => {
@@ -109,6 +119,32 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
       }
 
       try {
+        if (message.type === "ping") {
+          socket.lastAppPongAt = Date.now();
+          socket.appPongsSent += 1;
+
+          // Throttle logs to avoid flooding.
+          if (socket.appPongsSent % 10 === 0) {
+            logger.info("App-level pong sent", {
+              event: "ws_app_pong",
+              requestId,
+              ts: message.ts ?? null,
+            });
+          }
+
+          safeSend(socket, {
+            type: "pong",
+            ts: message.ts ?? null,
+            at: Date.now(),
+          });
+          return;
+        }
+
+        if (message.type === "pong") {
+          // Client-initiated pong is ignored; server sends pings.
+          return;
+        }
+
         if (message.type === "subscribe") {
           let code;
           let playerId;
@@ -251,6 +287,10 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
     });
 
     socket.on("close", () => {
+      logger.info("WebSocket connection closed", {
+        event: "ws_client_disconnected",
+        requestId,
+      });
       removeSocketFromLobby(socket, "member_left");
     });
 
@@ -258,7 +298,13 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
       logger.warn("Websocket client error", {
         event: "ws_client_error",
         message: error.message,
+        requestId,
       });
+    });
+
+    logger.info("WebSocket connection opened", {
+      event: "ws_client_connected",
+      requestId,
     });
   });
 

@@ -462,6 +462,7 @@ export default function GamePage() {
     lobbySession,
     clearLobbySession,
     restoreState,
+    connectionState = "connected",
     sendLobbyAction,
     setErrorMessage,
   } = useLobby();
@@ -518,6 +519,21 @@ export default function GamePage() {
     );
   }
 
+  const isRealtimeConnected = connectionState === "connected";
+  const shouldShowReconnectBanner =
+    connectionState === "disconnected" || connectionState === "reconnecting";
+
+  if (shouldShowReconnectBanner) {
+    return (
+      <div className="min-h-screen p-6 text-center text-white flex items-center justify-center">
+        <div>
+          <p className="text-neutral-400 text-sm">Reconnecting…</p>
+          <p className="mt-2 text-white font-semibold">Actions disabled</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!lobbySession || lobbySession.code !== code) {
     return <Navigate to="/" replace />;
   }
@@ -545,13 +561,15 @@ export default function GamePage() {
   };
 
   const permissions = game.permissions || fallbackPermissions;
-  const canStartTurn = Boolean(permissions.canStartTurn);
-  const canSubmitGuess = Boolean(permissions.canSubmitGuess);
-  const canSkipCard = Boolean(permissions.canSkipCard);
-  const canCallTaboo = Boolean(permissions.canCallTaboo);
-  const canRequestReview = Boolean(permissions.canRequestReview);
-  const canVoteReview = Boolean(permissions.canVoteReview);
-  const canContinueAfterReview = Boolean(permissions.canContinueAfterReview);
+  const canStartTurn = isRealtimeConnected && Boolean(permissions.canStartTurn);
+  const canSubmitGuess = isRealtimeConnected && Boolean(permissions.canSubmitGuess);
+  const canSkipCard = isRealtimeConnected && Boolean(permissions.canSkipCard);
+  const canCallTaboo = isRealtimeConnected && Boolean(permissions.canCallTaboo);
+  const canRequestReview =
+    isRealtimeConnected && Boolean(permissions.canRequestReview);
+  const canVoteReview = isRealtimeConnected && Boolean(permissions.canVoteReview);
+  const canContinueAfterReview =
+    isRealtimeConnected && Boolean(permissions.canContinueAfterReview);
 
   const roundDuration =
     lobbySession.lobby?.settings?.roundDurationSeconds ?? 60;
@@ -579,10 +597,15 @@ export default function GamePage() {
 
   const handleGameAction = useCallback(
     (action, payload = {}) => {
+      if (!isRealtimeConnected) {
+        setErrorMessage("Reconnecting…");
+        return false;
+      }
       setErrorMessage("");
       sendLobbyAction({ type: "game_action", action, ...payload });
+      return true;
     },
-    [sendLobbyAction, setErrorMessage],
+    [sendLobbyAction, setErrorMessage, isRealtimeConnected],
   );
 
   const submitGuess = useCallback(() => {
