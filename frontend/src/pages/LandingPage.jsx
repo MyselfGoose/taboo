@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, Sparkles, Users, Zap } from "lucide-react";
 
 import { createLobby, getCategories, joinLobby } from "../api/lobbyApi";
@@ -24,10 +24,13 @@ export default function LandingPage() {
     useLobby();
   const reduceMotion = useReducedMotion();
 
-  const [activeTab, setActiveTab] = useState("create");
+  const [searchParams] = useSearchParams();
+  const codeParam = searchParams.get("code");
+
+  const [activeTab, setActiveTab] = useState(codeParam ? "join" : "create");
   const [createName, setCreateName] = useState("");
   const [joinName, setJoinName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
+  const [joinCode, setJoinCode] = useState(codeParam || "");
   const [roundCount, setRoundCount] = useState(5);
   const [roundDurationSeconds, setRoundDurationSeconds] = useState(60);
   const [categoryMode, setCategoryMode] = useState("single");

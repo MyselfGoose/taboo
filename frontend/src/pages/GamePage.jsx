@@ -618,6 +618,14 @@ export default function GamePage() {
     );
   }
 
+  if (!lobbySession || lobbySession.code !== code) {
+    return <Navigate to={`/?code=${code}`} replace />;
+  }
+
+  if (!game) {
+    return <Navigate to={`/lobby/${code}`} replace />;
+  }
+
   if (shouldShowReconnectBanner) {
     return (
       <div className="min-h-screen p-6 text-center text-white flex items-center justify-center">
@@ -627,14 +635,6 @@ export default function GamePage() {
         </div>
       </div>
     );
-  }
-
-  if (!lobbySession || lobbySession.code !== code) {
-    return <Navigate to="/" replace />;
-  }
-
-  if (!game) {
-    return <Navigate to={`/lobby/${code}`} replace />;
   }
 
   const colorsA = teamColors("A");

@@ -70,7 +70,7 @@ export default function LobbyPage() {
   }
 
   if (!lobbySession || !lobbySession.playerName || lobbySession.code !== code) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={`/?code=${code}`} replace />;
   }
 
   const lobby = lobbySession.lobby;

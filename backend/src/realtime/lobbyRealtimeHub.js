@@ -65,15 +65,11 @@ function createLobbyRealtimeHub({ server, lobbyService, logger }) {
 
     if (nextCount <= 0) {
       memberConnectionCount.delete(memberKey);
-      const lobby = lobbyService.removeLobbyMemberById({
-        playerId: ctx.playerId,
-        lobbyCode: ctx.code,
-        requestId: ctx.requestId,
-      });
+      const lobby = lobbyService.getLobby({ lobbyCode: ctx.code });
 
       if (lobby) {
         try {
-          broadcastLobbyState(ctx.code, reason || "member_left");
+          broadcastLobbyState(ctx.code, reason || "member_disconnected");
         } catch (error) {
           logger.warn("Lobby broadcast skipped after disconnect", {
             event: "ws_broadcast_skip",
