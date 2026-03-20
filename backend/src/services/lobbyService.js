@@ -26,7 +26,7 @@ function allPlayersReady(lobby) {
 const TURN_READY_DELAY_MS = 3000;
 const NEXT_ROUND_DELAY_MS = 10000;
 
-function buildTurnOrder(players) {
+function buildTurnOrder(players, roundNumber = 1) {
   const teamA = players.filter((player) => player.team === "A");
   const teamB = players.filter((player) => player.team === "B");
 
@@ -34,23 +34,49 @@ function buildTurnOrder(players) {
     return [];
   }
 
-  const turnsPerTeam = Math.max(teamA.length, teamB.length);
+  const roundIdx = Math.max(
+    0,
+    Number.isFinite(roundNumber) ? Math.floor(roundNumber) - 1 : 0,
+  );
+  const startA = roundIdx % teamA.length;
+  const startB = roundIdx % teamB.length;
+
+  // Rotate the per-team player lists so each round starts with a different
+  // (but still deterministic) clue giver for each team.
+  const rotatedA = teamA.slice(startA).concat(teamA.slice(0, startA));
+  const rotatedB = teamB.slice(startB).concat(teamB.slice(0, startB));
+
+  // Interleave by team: A0, B0, A1, B1, ... until one team runs out,
+  // then let the remaining team(s) finish the round.
   const order = [];
+  let aIndex = 0;
+  let bIndex = 0;
+  let step = 0;
 
-  for (let index = 0; index < turnsPerTeam; index += 1) {
-    const playerA = teamA[index % teamA.length];
-    order.push({
-      playerId: playerA.id,
-      playerName: playerA.name,
-      team: "A",
-    });
+  while (aIndex < rotatedA.length || bIndex < rotatedB.length) {
+    const expectedTeam = step % 2 === 0 ? "A" : "B";
 
-    const playerB = teamB[index % teamB.length];
-    order.push({
-      playerId: playerB.id,
-      playerName: playerB.name,
-      team: "B",
-    });
+    if (expectedTeam === "A") {
+      if (aIndex < rotatedA.length) {
+        const playerA = rotatedA[aIndex];
+        order.push({
+          playerId: playerA.id,
+          playerName: playerA.name,
+          team: "A",
+        });
+        aIndex += 1;
+      }
+    } else if (bIndex < rotatedB.length) {
+      const playerB = rotatedB[bIndex];
+      order.push({
+        playerId: playerB.id,
+        playerName: playerB.name,
+        team: "B",
+      });
+      bIndex += 1;
+    }
+
+    step += 1;
   }
 
   return order;
@@ -519,7 +545,7 @@ class LobbyService {
 
     const deck = this.ensureDeckForLobby(lobby);
     const activeCard = deck.shift() || null;
-    const turnOrder = buildTurnOrder(lobby.players);
+    const turnOrder = buildTurnOrder(lobby.players, 1);
 
     if (turnOrder.length < 2) {
       throw new AppError(
@@ -665,7 +691,10 @@ class LobbyService {
     }
 
     if (!Array.isArray(game.turnOrder) || game.turnOrder.length === 0) {
-      game.turnOrder = buildTurnOrder(lobby.players);
+      game.turnOrder = buildTurnOrder(
+        lobby.players,
+        Number.isFinite(game.roundNumber) ? game.roundNumber : 1,
+      );
       changed = true;
     }
 
@@ -811,10 +840,10 @@ class LobbyService {
       this.resolveReviewIfComplete(lobby, now, "roster_change");
     }
 
-    const playersById = new Set(lobby.players.map((player) => player.id));
-    game.turnOrder = (game.turnOrder || []).filter((entry) =>
-      playersById.has(entry.playerId),
-    );
+    const schedulingRoundNumber =
+      game.status === "between_rounds" ? game.roundNumber + 1 : game.roundNumber;
+
+    game.turnOrder = buildTurnOrder(lobby.players, schedulingRoundNumber);
 
     if (
       game.turnOrder.length === 0 ||
@@ -825,18 +854,22 @@ class LobbyService {
       return;
     }
 
+    if (typeof game.turnIndex !== "number" || game.turnIndex < 0) {
+      game.turnIndex = 0;
+    }
     if (game.turnIndex >= game.turnOrder.length) {
       game.turnIndex = 0;
     }
 
-    const activeStillPresent = game.activeTurn
-      ? game.turnOrder.some(
-          (entry) => entry.playerId === game.activeTurn.playerId,
-        )
-      : false;
+    const activePlayerId = game.activeTurn?.playerId || null;
+    const activeIndex =
+      activePlayerId === null
+        ? -1
+        : game.turnOrder.findIndex((entry) => entry.playerId === activePlayerId);
 
-    if (!activeStillPresent) {
-      const fallbackTurn = game.turnOrder[game.turnIndex] || game.turnOrder[0];
+    if (activeIndex === -1) {
+      const fallbackTurn =
+        game.turnOrder[game.turnIndex] || game.turnOrder[0];
       game.turnIndex = game.turnOrder.findIndex(
         (entry) => entry.playerId === fallbackTurn.playerId,
       );
@@ -848,10 +881,10 @@ class LobbyService {
       game.phaseEndsAt = null;
       game.lastActionAt = now;
     } else {
-      game.activeTurn =
-        game.turnOrder.find(
-          (entry) => entry.playerId === game.activeTurn.playerId,
-        ) || game.activeTurn;
+      // Preserve the currently active clue giver in the newly rebuilt
+      // (uneven-team-safe) round schedule.
+      game.turnIndex = activeIndex;
+      game.activeTurn = game.turnOrder[activeIndex];
       game.activeTeam = game.activeTurn.team;
     }
   }
@@ -977,13 +1010,6 @@ class LobbyService {
     game.phaseEndsAt = now + NEXT_ROUND_DELAY_MS;
     game.turnStartsAt = null;
     game.turnEndsAt = null;
-
-    const nextOffset =
-      ((game.roundStartOffset || 0) + 2) % game.turnOrder.length;
-    game.roundStartOffset = nextOffset;
-    game.turnIndex = nextOffset;
-    game.activeTurn = game.turnOrder[game.turnIndex];
-    game.activeTeam = game.activeTurn.team;
     game.lastActionAt = now;
     lobby.updatedAt = now;
     this.repository.save(lobby);
@@ -1630,9 +1656,14 @@ class LobbyService {
       game.phaseEndsAt <= now
     ) {
       game.roundNumber += 1;
-      const startIdx = game.roundStartOffset || 0;
-      game.turnIndex = startIdx;
-      game.activeTurn = game.turnOrder[startIdx];
+      game.turnOrder = buildTurnOrder(lobby.players, game.roundNumber);
+      if (!Array.isArray(game.turnOrder) || game.turnOrder.length === 0) {
+        this.finishGame(lobby, now);
+        return "game_finished";
+      }
+
+      game.turnIndex = 0;
+      game.activeTurn = game.turnOrder[0];
       game.activeTeam = game.activeTurn.team;
       game.status = "waiting_to_start_turn";
       game.phaseEndsAt = null;

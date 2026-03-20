@@ -371,3 +371,176 @@ test("toLobbySnapshot hides card for teammate guesser", () => {
   assert.equal(opponentSnapshot.game.cardVisibleToViewer, true);
   assert.ok(opponentSnapshot.game.currentCard);
 });
+
+function expectedInterleavedTurnOrderForRound(players, roundNumber) {
+  const teamA = players.filter((p) => p.team === "A");
+  const teamB = players.filter((p) => p.team === "B");
+  if (teamA.length === 0 || teamB.length === 0) return [];
+
+  const roundIdx = Math.max(0, Math.floor(roundNumber) - 1);
+  const startA = roundIdx % teamA.length;
+  const startB = roundIdx % teamB.length;
+  const rotatedA = teamA.slice(startA).concat(teamA.slice(0, startA));
+  const rotatedB = teamB.slice(startB).concat(teamB.slice(0, startB));
+
+  const order = [];
+  let aIndex = 0;
+  let bIndex = 0;
+  let step = 0;
+
+  while (aIndex < rotatedA.length || bIndex < rotatedB.length) {
+    const expectedTeam = step % 2 === 0 ? "A" : "B";
+
+    if (expectedTeam === "A") {
+      if (aIndex < rotatedA.length) {
+        order.push(rotatedA[aIndex].id);
+        aIndex += 1;
+      }
+    } else if (bIndex < rotatedB.length) {
+      order.push(rotatedB[bIndex].id);
+      bIndex += 1;
+    }
+
+    step += 1;
+  }
+
+  return order;
+}
+
+test("uneven teams: each round includes every player once", () => {
+  const service = createService();
+
+  const lobby = service.createLobby({
+    playerName: "A1",
+    requestId: "r0",
+  });
+
+  service.joinLobby({
+    playerName: "A2",
+    lobbyCode: lobby.code,
+    requestId: "r1",
+  });
+  service.joinLobby({
+    playerName: "B1",
+    lobbyCode: lobby.code,
+    requestId: "r2",
+  });
+  service.joinLobby({
+    playerName: "B2",
+    lobbyCode: lobby.code,
+    requestId: "r3",
+  });
+  service.joinLobby({
+    playerName: "B3",
+    lobbyCode: lobby.code,
+    requestId: "r4",
+  });
+
+  // Force uneven teams: Team A = 2 players, Team B = 3 players.
+  service.setPlayerTeam({
+    playerName: "A2",
+    lobbyCode: lobby.code,
+    team: "A",
+    requestId: "r5",
+  });
+  service.setPlayerTeam({
+    playerName: "B1",
+    lobbyCode: lobby.code,
+    team: "B",
+    requestId: "r6",
+  });
+  service.setPlayerTeam({
+    playerName: "B2",
+    lobbyCode: lobby.code,
+    team: "B",
+    requestId: "r7",
+  });
+  service.setPlayerTeam({
+    playerName: "B3",
+    lobbyCode: lobby.code,
+    team: "B",
+    requestId: "r8",
+  });
+
+  // Mark everyone ready (setPlayerTeam invalidates readiness).
+  for (const [idx, name] of ["A1", "A2", "B1", "B2", "B3"].entries()) {
+    service.setPlayerReady({
+      playerName: name,
+      lobbyCode: lobby.code,
+      ready: true,
+      requestId: `r-ready-${idx}`,
+    });
+  }
+
+  const started = service.startGameIfAllReady({
+    lobbyCode: lobby.code,
+    requestId: "r-start",
+  });
+  assert.equal(started, true);
+
+  let activeLobby = service.getLobby({ lobbyCode: lobby.code });
+  const totalPlayers = activeLobby.players.length;
+  assert.equal(totalPlayers, 5);
+
+  for (let roundNumber = 1; roundNumber <= 2; roundNumber += 1) {
+    assert.equal(activeLobby.game.status, "waiting_to_start_turn");
+    assert.equal(activeLobby.game.roundNumber, roundNumber);
+
+    const expectedOrder = expectedInterleavedTurnOrderForRound(
+      activeLobby.players,
+      roundNumber,
+    );
+    assert.equal(expectedOrder.length, totalPlayers);
+
+    const actualOrder = [];
+    const historyStartLen = activeLobby.game.history.length;
+
+    for (let i = 0; i < totalPlayers; i += 1) {
+      const turn = activeLobby.game.activeTurn;
+      assert.ok(turn);
+      actualOrder.push(turn.playerId);
+
+      service.applyGameActionByPlayerId({
+        lobbyCode: activeLobby.code,
+        playerId: turn.playerId,
+        action: "start_turn",
+        requestId: `r-start-turn-${roundNumber}-${i}`,
+      });
+
+      activeLobby = service.getLobby({ lobbyCode: activeLobby.code });
+      const turnEndsAt = activeLobby.game.turnEndsAt;
+      assert.equal(activeLobby.game.status, "turn_in_progress");
+
+      service.advanceGamePhase(activeLobby, turnEndsAt + 1);
+      activeLobby = service.getLobby({ lobbyCode: activeLobby.code });
+
+      if (i < totalPlayers - 1) {
+        assert.equal(activeLobby.game.status, "between_turns");
+        service.advanceGamePhase(activeLobby, activeLobby.game.phaseEndsAt + 1);
+        activeLobby = service.getLobby({ lobbyCode: activeLobby.code });
+        assert.equal(activeLobby.game.status, "waiting_to_start_turn");
+      } else {
+        assert.equal(activeLobby.game.status, "between_rounds");
+      }
+    }
+
+    assert.deepEqual(actualOrder, expectedOrder);
+
+    const newHistory = activeLobby.game.history.slice(historyStartLen);
+    const turnTimeoutEntries = newHistory.filter(
+      (e) => e.action === "turn_timeout",
+    );
+    assert.equal(turnTimeoutEntries.length, totalPlayers);
+    assert.deepEqual(
+      turnTimeoutEntries.map((e) => e.playerId),
+      actualOrder,
+    );
+
+    // Start next round.
+    if (roundNumber < 2) {
+      service.advanceGamePhase(activeLobby, activeLobby.game.phaseEndsAt + 1);
+      activeLobby = service.getLobby({ lobbyCode: activeLobby.code });
+      assert.equal(activeLobby.game.status, "waiting_to_start_turn");
+    }
+  }
+});
