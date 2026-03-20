@@ -1,11 +1,14 @@
 import AppRouter from "./router/AppRouter";
 import { LobbyProvider } from "./context/LobbyContext";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 function App() {
   return (
-    <LobbyProvider>
-      <AppRouter />
-    </LobbyProvider>
+    <ErrorBoundary>
+      <LobbyProvider>
+        <AppRouter />
+      </LobbyProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -511,44 +511,9 @@ export default function GamePage() {
     [lobbySession?.lobby?.players, lobbySession?.playerId],
   );
 
-  if (restoreState === "restoring") {
-    return (
-      <div className="min-h-screen p-6 text-center text-white">
-        Reconnecting to your game...
-      </div>
-    );
-  }
-
   const isRealtimeConnected = connectionState === "connected";
   const shouldShowReconnectBanner =
     connectionState === "disconnected" || connectionState === "reconnecting";
-
-  if (shouldShowReconnectBanner) {
-    return (
-      <div className="min-h-screen p-6 text-center text-white flex items-center justify-center">
-        <div>
-          <p className="text-neutral-400 text-sm">Reconnecting…</p>
-          <p className="mt-2 text-white font-semibold">Actions disabled</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!lobbySession || lobbySession.code !== code) {
-    return <Navigate to="/" replace />;
-  }
-
-  if (!game) {
-    return <Navigate to={`/lobby/${code}`} replace />;
-  }
-
-  const colorsA = teamColors("A");
-  const colorsB = teamColors("B");
-  const normalizedStatus =
-    game.status === "in_progress" ? "turn_in_progress" : game.status;
-  const activeTeamColors = teamColors(game.activeTeam || "A");
-  const isOnActiveTeam =
-    currentPlayer && currentPlayer.team === game.activeTeam;
 
   const fallbackPermissions = {
     canStartTurn: false,
@@ -560,7 +525,7 @@ export default function GamePage() {
     canContinueAfterReview: false,
   };
 
-  const permissions = game.permissions || fallbackPermissions;
+  const permissions = game?.permissions || fallbackPermissions;
   const canStartTurn = isRealtimeConnected && Boolean(permissions.canStartTurn);
   const canSubmitGuess = isRealtimeConnected && Boolean(permissions.canSubmitGuess);
   const canSkipCard = isRealtimeConnected && Boolean(permissions.canSkipCard);
@@ -571,25 +536,7 @@ export default function GamePage() {
   const canContinueAfterReview =
     isRealtimeConnected && Boolean(permissions.canContinueAfterReview);
 
-  const roundDuration =
-    lobbySession.lobby?.settings?.roundDurationSeconds ?? 60;
-  const timerPercent =
-    normalizedStatus === "turn_in_progress" && roundDuration > 0
-      ? (secondsRemaining / roundDuration) * 100
-      : 0;
-
-  const timerColor =
-    secondsRemaining <= 10
-      ? "text-red-400"
-      : secondsRemaining <= 20
-        ? "text-amber-400"
-        : "text-white";
-
-  const cardVisibleToViewer =
-    typeof game.cardVisibleToViewer === "boolean"
-      ? game.cardVisibleToViewer
-      : false;
-  const review = game.review;
+  const review = game?.review;
   const reviewStatus = review?.status;
   const reviewPaused =
     reviewStatus === "in_progress" || reviewStatus === "resolved";
@@ -662,6 +609,60 @@ export default function GamePage() {
     lastPromptedReviewIdRef.current = reviewId;
     setShowTabooReviewPrompt(true);
   }, [canRequestReview, reviewId, reviewStatus]);
+
+  if (restoreState === "restoring") {
+    return (
+      <div className="min-h-screen p-6 text-center text-white">
+        Reconnecting to your game...
+      </div>
+    );
+  }
+
+  if (shouldShowReconnectBanner) {
+    return (
+      <div className="min-h-screen p-6 text-center text-white flex items-center justify-center">
+        <div>
+          <p className="text-neutral-400 text-sm">Reconnecting…</p>
+          <p className="mt-2 text-white font-semibold">Actions disabled</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!lobbySession || lobbySession.code !== code) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (!game) {
+    return <Navigate to={`/lobby/${code}`} replace />;
+  }
+
+  const colorsA = teamColors("A");
+  const colorsB = teamColors("B");
+  const normalizedStatus =
+    game.status === "in_progress" ? "turn_in_progress" : game.status;
+  const activeTeamColors = teamColors(game.activeTeam || "A");
+  const isOnActiveTeam =
+    currentPlayer && currentPlayer.team === game.activeTeam;
+
+  const roundDuration =
+    lobbySession.lobby?.settings?.roundDurationSeconds ?? 60;
+  const timerPercent =
+    normalizedStatus === "turn_in_progress" && roundDuration > 0
+      ? (secondsRemaining / roundDuration) * 100
+      : 0;
+
+  const timerColor =
+    secondsRemaining <= 10
+      ? "text-red-400"
+      : secondsRemaining <= 20
+        ? "text-amber-400"
+        : "text-white";
+
+  const cardVisibleToViewer =
+    typeof game.cardVisibleToViewer === "boolean"
+      ? game.cardVisibleToViewer
+      : false;
 
   if (normalizedStatus === "finished") {
     return (
