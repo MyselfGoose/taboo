@@ -230,14 +230,6 @@ test("websocket broadcasts lobby member updates in real time", async () => {
     }),
   );
 
-  hostSocket.send(
-    JSON.stringify({
-      type: "game_action",
-      action: "review_vote",
-      vote: "not_fair",
-    }),
-  );
-
   const reviewResolvedState = await waitForMessage(
     hostSocket,
     (msg) =>

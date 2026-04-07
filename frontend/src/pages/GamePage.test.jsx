@@ -71,6 +71,8 @@ function buildGameState(overrides = {}) {
       },
     },
     restoreState: "restored",
+    connectionState: "connected",
+    lastStateReceivedAt: Date.now(),
     sendLobbyAction: vi.fn(),
     setErrorMessage: vi.fn(),
     clearLobbySession: vi.fn(),

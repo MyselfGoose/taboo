@@ -9,9 +9,21 @@ const {
   normalizeRoundDurationSeconds,
   normalizeGuessText,
 } = require("../utils/validation");
+const { evaluateGuessMatch } = require("../utils/guessMatch");
 const {
   InMemorySessionRepository,
 } = require("../repositories/inMemorySessionRepository");
+
+function shuffleArray(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = copy[i];
+    copy[i] = copy[j];
+    copy[j] = t;
+  }
+  return copy;
+}
 
 function nowMs() {
   return Date.now();
@@ -108,6 +120,87 @@ function cloneCard(card) {
   };
 }
 
+function buildMatchPersistencePayload(lobby, now) {
+  const game = lobby.game;
+  const history = Array.isArray(game.history) ? game.history : [];
+  const players = lobby.players;
+
+  const byId = new Map(
+    players.map((p) => [
+      p.id,
+      {
+        playerName: p.name,
+        team: p.team,
+        correctGuesses: 0,
+        closeGuesses: 0,
+        wrongGuesses: 0,
+        skips: 0,
+        taboosCalled: 0,
+      },
+    ]),
+  );
+
+  for (const entry of history) {
+    const pid = entry.playerId;
+    if (!pid || !byId.has(pid)) {
+      continue;
+    }
+    const st = byId.get(pid);
+    if (entry.action === "submit_guess" && entry.matched) {
+      st.correctGuesses += 1;
+    } else if (entry.action === "submit_guess") {
+      st.wrongGuesses += 1;
+    } else if (entry.action === "close_guess") {
+      st.closeGuesses += 1;
+    } else if (entry.action === "skip_card") {
+      st.skips += 1;
+    } else if (entry.action === "taboo_called") {
+      st.taboosCalled += 1;
+    }
+  }
+
+  const scoreA = game.scores?.A ?? 0;
+  const scoreB = game.scores?.B ?? 0;
+  let winner = "tie";
+  if (scoreA > scoreB) {
+    winner = "A";
+  } else if (scoreB > scoreA) {
+    winner = "B";
+  }
+
+  const playerStats = [...byId.values()];
+
+  const summary = {
+    lobbyCode: lobby.code,
+    hostName: lobby.hostName,
+    players: playerStats,
+    scores: { A: scoreA, B: scoreB },
+    winner,
+    totalRounds: game.totalRounds,
+    roundNumberWhenFinished: game.roundNumber,
+  };
+
+  const id = crypto.randomUUID();
+  const startedAt = typeof game.startedAt === "number" ? game.startedAt : null;
+  const durationMs =
+    startedAt !== null ? Math.max(0, now - startedAt) : null;
+
+  return {
+    id,
+    endedAt: now,
+    startedAt,
+    durationMs,
+    teamAScore: scoreA,
+    teamBScore: scoreB,
+    totalRounds: game.totalRounds,
+    winner,
+    categoryMode: lobby.settings.categoryMode,
+    categoryIds: lobby.settings.categoryIds || [],
+    summaryJson: JSON.stringify(summary),
+    playerStats,
+  };
+}
+
 class LobbyService {
   constructor({
     repository,
@@ -115,6 +208,7 @@ class LobbyService {
     datasetService,
     logger,
     config,
+    matchHistoryRepository,
   }) {
     this.repository = repository;
     this.sessionRepository =
@@ -122,6 +216,7 @@ class LobbyService {
     this.datasetService = datasetService;
     this.logger = logger;
     this.config = config;
+    this.matchHistoryRepository = matchHistoryRepository || null;
   }
 
   cleanup(now = nowMs()) {
@@ -577,6 +672,7 @@ class LobbyService {
         tabooUsed: false,
       },
       deck,
+      discard: [],
       review: null,
       history: [],
       lastActionAt: now,
@@ -627,19 +723,36 @@ class LobbyService {
   }
 
   drawNextCard(lobby) {
-    if (!lobby.game) {
+    const game = lobby.game;
+    if (!game) {
       return null;
     }
 
-    if (!Array.isArray(lobby.game.deck) || lobby.game.deck.length === 0) {
-      lobby.game.deck = this.ensureDeckForLobby(lobby);
+    if (!Array.isArray(game.discard)) {
+      game.discard = [];
+    }
+    if (!Array.isArray(game.deck)) {
+      game.deck = [];
     }
 
-    lobby.game.currentCard = lobby.game.deck.shift() || null;
-    lobby.game.currentCardMeta = {
+    if (game.currentCard) {
+      game.discard.push(cloneCard(game.currentCard));
+    }
+
+    if (game.deck.length === 0) {
+      if (game.discard.length > 0) {
+        game.deck = shuffleArray(game.discard);
+        game.discard = [];
+      } else {
+        game.deck = this.ensureDeckForLobby(lobby);
+      }
+    }
+
+    game.currentCard = game.deck.shift() || null;
+    game.currentCardMeta = {
       tabooUsed: false,
     };
-    return lobby.game.currentCard;
+    return game.currentCard;
   }
 
   ensureGameStateShape(lobby, now = nowMs()) {
@@ -671,12 +784,28 @@ class LobbyService {
     }
 
     if (!Array.isArray(game.deck)) {
-      game.deck = this.ensureDeckForLobby(lobby);
+      game.deck = [];
+      changed = true;
+    }
+
+    if (!Array.isArray(game.discard)) {
+      game.discard = [];
       changed = true;
     }
 
     if (!Array.isArray(game.history)) {
       game.history = [];
+      changed = true;
+    }
+
+    if (!game.currentCard && game.deck.length === 0 && game.discard.length > 0) {
+      game.deck = shuffleArray(game.discard);
+      game.discard = [];
+      changed = true;
+    }
+
+    if (!game.currentCard && game.deck.length === 0 && game.discard.length === 0) {
+      game.deck = this.ensureDeckForLobby(lobby);
       changed = true;
     }
 
@@ -1066,8 +1195,34 @@ class LobbyService {
       throw new AppError("Guess cannot be empty.", 400, "INVALID_GUESS");
     }
 
-    const normalizedAnswer = normalizeGuessText(game.currentCard?.question);
-    const isCorrect = normalizedGuess === normalizedAnswer;
+    const answerText = game.currentCard?.question || "";
+    const match = evaluateGuessMatch(guess, answerText);
+    const isCorrect = match.kind === "correct";
+    const isClose = match.kind === "close";
+
+    if (isClose) {
+      this.recordHistory(game, {
+        at: now,
+        playerId: player.id,
+        playerName: player.name,
+        team: player.team,
+        action: "close_guess",
+        guess,
+        normalizedGuess,
+        distance: match.distance,
+        cardId: game.currentCard ? game.currentCard.id : null,
+        cardQuestion: game.currentCard ? game.currentCard.question : null,
+        matched: false,
+        points: 0,
+      });
+      game.lastActionAt = now;
+      lobby.updatedAt = now;
+      this.repository.save(lobby);
+      return {
+        lobby,
+        reason: "guess_close",
+      };
+    }
 
     this.recordHistory(game, {
       at: now,
@@ -1295,8 +1450,10 @@ class LobbyService {
     const notFairCount = eligibleVotes.filter(
       (playerId) => votes[playerId] === "not_fair",
     ).length;
-    const ratio = notFairCount / eligible.length;
-    const outcome = ratio >= 0.8 ? "reverted" : "upheld";
+    const fairCount = eligibleVotes.filter(
+      (playerId) => votes[playerId] === "fair",
+    ).length;
+    const outcome = notFairCount > fairCount ? "reverted" : "upheld";
 
     if (outcome === "reverted" && review.penalizedTeam) {
       if (game.scores?.[review.penalizedTeam] === undefined) {
@@ -1318,6 +1475,7 @@ class LobbyService {
       penalizedTeam: review.penalizedTeam,
       outcome,
       notFairCount,
+      fairCount,
       totalVotes: eligible.length,
     });
 
@@ -1362,7 +1520,9 @@ class LobbyService {
     game.phaseEndsAt = null;
     game.review.status = "in_progress";
     game.review.votes = {};
-    game.review.eligiblePlayerIds = lobby.players.map((playerEntry) => playerEntry.id);
+    game.review.eligiblePlayerIds = lobby.players
+      .filter((playerEntry) => playerEntry.team === game.review.penalizedTeam)
+      .map((playerEntry) => playerEntry.id);
     game.review.pausedRemainingMs = remainingMs;
     game.review.outcome = null;
     game.lastActionAt = now;
@@ -1589,6 +1749,19 @@ class LobbyService {
   }
 
   finishGame(lobby, now) {
+    if (this.matchHistoryRepository) {
+      try {
+        const payload = buildMatchPersistencePayload(lobby, now);
+        this.matchHistoryRepository.insertMatch(payload);
+      } catch (error) {
+        this.logger.warn("Failed to persist match history", {
+          event: "match_history_persist_failed",
+          code: lobby.code,
+          message: error.message,
+        });
+      }
+    }
+
     lobby.game.status = "finished";
     lobby.game.endedAt = now;
     lobby.game.turnEndsAt = null;
@@ -1598,6 +1771,24 @@ class LobbyService {
     lobby.game.review = null;
     lobby.updatedAt = now;
     this.repository.save(lobby);
+  }
+
+  listRecentMatches(options) {
+    return this.matchHistoryRepository
+      ? this.matchHistoryRepository.listRecentMatches(options)
+      : [];
+  }
+
+  listLeaderboardHighScores(options) {
+    return this.matchHistoryRepository
+      ? this.matchHistoryRepository.listLeaderboardHighScores(options)
+      : [];
+  }
+
+  listTopPlayersByCorrect(options) {
+    return this.matchHistoryRepository
+      ? this.matchHistoryRepository.listTopPlayersByCorrect(options)
+      : [];
   }
 
   advanceGamePhase(lobby, now) {
@@ -1837,7 +2028,11 @@ class LobbyService {
       cardVisibleToViewer: !shouldHideCard,
       tabooUsedForCard: Boolean(game.currentCardMeta?.tabooUsed),
       lastTurnSummary: game.lastTurnSummary || null,
-      history: Array.isArray(game.history) ? game.history.slice(-12) : [],
+      history: Array.isArray(game.history)
+        ? game.status === "finished"
+          ? game.history
+          : game.history.slice(-12)
+        : [],
       review: reviewSnapshot,
     };
   }

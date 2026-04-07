@@ -1,4 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect -- timer & review UI sync with realtime snapshots */
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+
+const Motion = motion;
 import {
   AlertTriangle,
   CheckCircle2,
@@ -17,15 +20,59 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { GameFeedbackOverlay } from "../components/game/GameFeedbackOverlay";
+import { useGameFeedback } from "../hooks/useGameFeedback";
 import { useLobby } from "../hooks/useLobby";
 import { cn } from "../lib/cn";
-import { motionPresets } from "../theme/motion";
+import { feedbackMotion, motionPresets } from "../theme/motion";
 import { teamColors } from "../theme/variants";
 
-function GameOverScreen({ game, reduceMotion, onLeave }) {
+function buildPlayerRecapRows(players, history) {
+  const rows = new Map();
+  for (const p of players || []) {
+    rows.set(p.id, {
+      id: p.id,
+      name: p.name,
+      team: p.team,
+      correct: 0,
+      close: 0,
+      wrong: 0,
+      skips: 0,
+      taboos: 0,
+    });
+  }
+  for (const entry of history || []) {
+    const id = entry.playerId;
+    if (!id || !rows.has(id)) {
+      continue;
+    }
+    const r = rows.get(id);
+    if (entry.action === "submit_guess" && entry.matched) {
+      r.correct += 1;
+    } else if (entry.action === "submit_guess") {
+      r.wrong += 1;
+    } else if (entry.action === "close_guess") {
+      r.close += 1;
+    } else if (entry.action === "skip_card") {
+      r.skips += 1;
+    } else if (entry.action === "taboo_called") {
+      r.taboos += 1;
+    }
+  }
+  return [...rows.values()].sort((a, b) => b.correct - a.correct);
+}
+
+function GameOverScreen({ game, players, reduceMotion, onLeave }) {
   const scoreA = game?.scores?.A ?? 0;
   const scoreB = game?.scores?.B ?? 0;
   const winner = scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : "tie";
+  const recapRows = buildPlayerRecapRows(players, game?.history);
+  const history = game?.history || [];
+  const totalCorrect = history.filter(
+    (e) => e.action === "submit_guess" && e.matched,
+  ).length;
+  const totalTaboo = history.filter((e) => e.action === "taboo_called").length;
+  const totalSkips = history.filter((e) => e.action === "skip_card").length;
 
   const motionProps = reduceMotion
     ? {}
@@ -37,7 +84,7 @@ function GameOverScreen({ game, reduceMotion, onLeave }) {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4">
-      <motion.div
+      <Motion.div
         className="w-full max-w-sm rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.08] to-white/[0.03] p-6 text-center"
         {...motionProps}
       >
@@ -77,6 +124,57 @@ function GameOverScreen({ game, reduceMotion, onLeave }) {
           </div>
         </div>
 
+        <div className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 text-left">
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+            Match summary
+          </p>
+          <div className="grid grid-cols-3 gap-2 text-center text-xs text-neutral-400">
+            <div>
+              <p className="text-lg font-semibold text-emerald-300">
+                {totalCorrect}
+              </p>
+              <p>Correct</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-amber-300">{totalSkips}</p>
+              <p>Skips</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-red-300">{totalTaboo}</p>
+              <p>Taboos</p>
+            </div>
+          </div>
+        </div>
+
+        {recapRows.length > 0 && (
+          <div className="mb-6 max-h-40 overflow-y-auto rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-left">
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+              Per player
+            </p>
+            <ul className="space-y-1.5 text-xs text-neutral-300">
+              {recapRows.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-1 border-b border-white/[0.04] pb-1.5 last:border-0"
+                >
+                  <span className="font-medium text-white">
+                    {row.name}
+                    <span className="ml-1 text-[10px] text-neutral-500">
+                      {row.team === "B" ? "Beta" : "Alpha"}
+                    </span>
+                  </span>
+                  <span className="text-neutral-400">
+                    +{row.correct} correct
+                    {row.close > 0 ? ` · ${row.close} close` : ""}
+                    {row.skips > 0 ? ` · ${row.skips} skip` : ""}
+                    {row.taboos > 0 ? ` · ${row.taboos} taboo` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={onLeave}
@@ -85,12 +183,18 @@ function GameOverScreen({ game, reduceMotion, onLeave }) {
           <LogOut className="h-4 w-4" />
           Leave Game
         </button>
-      </motion.div>
+      </Motion.div>
     </div>
   );
 }
 
-function PhasePanel({ game, canStartTurn, onStartTurn, countdown }) {
+function PhasePanel({
+  game,
+  canStartTurn,
+  onStartTurn,
+  countdown,
+  startTurnDisabled,
+}) {
   const activeName = game?.activeTurn?.playerName || "Player";
   const activeTeamLabel = game?.activeTeam === "B" ? "Beta" : "Alpha";
   const summary = game?.lastTurnSummary;
@@ -110,6 +214,10 @@ function PhasePanel({ game, canStartTurn, onStartTurn, countdown }) {
             <Play className="h-4 w-4" />
             Start Turn
           </button>
+        ) : startTurnDisabled ? (
+          <p className="text-sm text-amber-200/90">
+            Reconnecting… Start Turn will be available when live.
+          </p>
         ) : (
           <p className="text-sm text-neutral-400">
             Waiting for {activeName} to start their turn.
@@ -261,6 +369,10 @@ function ActivityFeed({ history, reduceMotion }) {
             icon = <XCircle className="h-3.5 w-3.5 text-neutral-500" />;
             text = `${entry.playerName}: "${entry.guess}"`;
             color = "text-neutral-500";
+          } else if (entry.action === "close_guess") {
+            icon = <MessageCircle className="h-3.5 w-3.5 text-amber-400" />;
+            text = `${entry.playerName}: close guess "${entry.guess}"`;
+            color = "text-amber-400";
           } else if (entry.action === "skip_card") {
             icon = <SkipForward className="h-3.5 w-3.5 text-amber-400" />;
             text = "Card skipped";
@@ -278,7 +390,7 @@ function ActivityFeed({ history, reduceMotion }) {
           }
 
           return (
-            <motion.div
+            <Motion.div
               key={key}
               initial={reduceMotion ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -287,7 +399,7 @@ function ActivityFeed({ history, reduceMotion }) {
             >
               {icon}
               <span className="truncate">{text}</span>
-            </motion.div>
+            </Motion.div>
           );
         })}
       </AnimatePresence>
@@ -325,7 +437,7 @@ function ReviewPanel({
       };
 
   return (
-    <motion.section
+    <Motion.section
       {...motionProps}
       className="mb-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5"
     >
@@ -344,15 +456,16 @@ function ReviewPanel({
           </p>
         </div>
         <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-neutral-300">
-          Votes {notFairCount}/{eligibleCount} not fair
+          {notFairCount} not fair · {fairCount} fair
         </span>
       </div>
 
-      {status === "available" && permissions?.canRequestReview && (
+      {status === "available" && permissions?.roleCanRequestReview && (
         <button
           type="button"
           onClick={onRequestReview}
-          className="w-full rounded-xl border border-[#3b6ca8]/40 bg-[#1e3a5f]/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]/45"
+          disabled={!permissions?.isRealtimeConnected}
+          className="w-full rounded-xl border border-[#3b6ca8]/40 bg-[#1e3a5f]/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]/45 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Request Review
         </button>
@@ -385,7 +498,10 @@ function ReviewPanel({
             <button
               type="button"
               onClick={() => onVote("fair")}
-              disabled={!permissions?.canVoteReview}
+              disabled={
+                !permissions?.roleCanVoteReview ||
+                !permissions?.isRealtimeConnected
+              }
               className="flex-1 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Vote Fair
@@ -393,17 +509,22 @@ function ReviewPanel({
             <button
               type="button"
               onClick={() => onVote("not_fair")}
-              disabled={!permissions?.canVoteReview}
+              disabled={
+                !permissions?.roleCanVoteReview ||
+                !permissions?.isRealtimeConnected
+              }
               className="flex-1 rounded-xl border border-red-500/40 bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Vote Not Fair
             </button>
           </div>
           <p className="text-xs text-neutral-500">
-            {fairCount} fair · {notFairCount} not fair · {eligibleCount} total
+            Team {penalizedLabel} votes · {eligibleCount} player
+            {eligibleCount === 1 ? "" : "s"}
           </p>
           <p className="text-[11px] text-neutral-600">
-            At least 80% not fair required to reverse the penalty.
+            Majority &quot;not fair&quot; reverses the −1 penalty. Ties keep the
+            penalty.
           </p>
         </div>
       )}
@@ -418,11 +539,12 @@ function ReviewPanel({
           <p className="text-xs text-neutral-500">
             {fairCount} fair · {notFairCount} not fair · {eligibleCount} total
           </p>
-          {permissions?.canContinueAfterReview && (
+          {permissions?.roleCanContinueAfterReview && (
             <button
               type="button"
               onClick={onContinue}
-              className="w-full rounded-xl border border-[#3b6ca8]/40 bg-[#1e3a5f]/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]/45"
+              disabled={!permissions?.isRealtimeConnected}
+              className="w-full rounded-xl border border-[#3b6ca8]/40 bg-[#1e3a5f]/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]/45 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue Turn
             </button>
@@ -450,7 +572,7 @@ function ReviewPanel({
           </div>
         </div>
       )}
-    </motion.section>
+    </Motion.section>
   );
 }
 
@@ -465,6 +587,7 @@ export default function GamePage() {
     connectionState = "connected",
     sendLobbyAction,
     setErrorMessage,
+    lastStateReceivedAt,
   } = useLobby();
 
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -515,6 +638,13 @@ export default function GamePage() {
   const shouldShowReconnectBanner =
     connectionState === "disconnected" || connectionState === "reconnecting";
 
+  const feedbackVariant = useGameFeedback({
+    history: game?.history,
+    review: game?.review,
+    gameStatus: game?.status,
+    reduceMotion,
+  });
+
   const fallbackPermissions = {
     canStartTurn: false,
     canSubmitGuess: false,
@@ -526,15 +656,22 @@ export default function GamePage() {
   };
 
   const permissions = game?.permissions || fallbackPermissions;
-  const canStartTurn = isRealtimeConnected && Boolean(permissions.canStartTurn);
-  const canSubmitGuess = isRealtimeConnected && Boolean(permissions.canSubmitGuess);
-  const canSkipCard = isRealtimeConnected && Boolean(permissions.canSkipCard);
-  const canCallTaboo = isRealtimeConnected && Boolean(permissions.canCallTaboo);
-  const canRequestReview =
-    isRealtimeConnected && Boolean(permissions.canRequestReview);
-  const canVoteReview = isRealtimeConnected && Boolean(permissions.canVoteReview);
+  const roleCanStartTurn = Boolean(permissions.canStartTurn);
+  const roleCanSubmitGuess = Boolean(permissions.canSubmitGuess);
+  const roleCanSkipCard = Boolean(permissions.canSkipCard);
+  const roleCanCallTaboo = Boolean(permissions.canCallTaboo);
+  const roleCanRequestReview = Boolean(permissions.canRequestReview);
+  const roleCanVoteReview = Boolean(permissions.canVoteReview);
+  const roleCanContinueAfterReview = Boolean(
+    permissions.canContinueAfterReview,
+  );
+
+  const canStartTurn = isRealtimeConnected && roleCanStartTurn;
+  const canSubmitGuess = isRealtimeConnected && roleCanSubmitGuess;
+  const canRequestReview = isRealtimeConnected && roleCanRequestReview;
+  const canVoteReview = isRealtimeConnected && roleCanVoteReview;
   const canContinueAfterReview =
-    isRealtimeConnected && Boolean(permissions.canContinueAfterReview);
+    isRealtimeConnected && roleCanContinueAfterReview;
 
   const review = game?.review;
   const reviewStatus = review?.status;
@@ -566,14 +703,14 @@ export default function GamePage() {
   }, [guessText, canSubmitGuess, handleGameAction]);
 
   const handleRequestReview = useCallback(() => {
-    if (!canRequestReview) return;
+    if (!roleCanRequestReview) return;
     handleGameAction("request_review");
-  }, [canRequestReview, handleGameAction]);
+  }, [roleCanRequestReview, handleGameAction]);
 
   const handleDismissReview = useCallback(() => {
-    if (!canRequestReview) return;
+    if (!roleCanRequestReview) return;
     handleGameAction("dismiss_review");
-  }, [canRequestReview, handleGameAction]);
+  }, [roleCanRequestReview, handleGameAction]);
 
   const handleReviewVote = useCallback(
     (vote) => {
@@ -594,7 +731,7 @@ export default function GamePage() {
       return;
     }
 
-    if (!canRequestReview) {
+    if (!roleCanRequestReview) {
       return;
     }
 
@@ -608,7 +745,7 @@ export default function GamePage() {
 
     lastPromptedReviewIdRef.current = reviewId;
     setShowTabooReviewPrompt(true);
-  }, [canRequestReview, reviewId, reviewStatus]);
+  }, [roleCanRequestReview, reviewId, reviewStatus]);
 
   if (restoreState === "restoring") {
     return (
@@ -626,24 +763,11 @@ export default function GamePage() {
     return <Navigate to={`/lobby/${code}`} replace />;
   }
 
-  if (shouldShowReconnectBanner) {
-    return (
-      <div className="min-h-screen p-6 text-center text-white flex items-center justify-center">
-        <div>
-          <p className="text-neutral-400 text-sm">Reconnecting…</p>
-          <p className="mt-2 text-white font-semibold">Actions disabled</p>
-        </div>
-      </div>
-    );
-  }
-
   const colorsA = teamColors("A");
   const colorsB = teamColors("B");
   const normalizedStatus =
     game.status === "in_progress" ? "turn_in_progress" : game.status;
   const activeTeamColors = teamColors(game.activeTeam || "A");
-  const isOnActiveTeam =
-    currentPlayer && currentPlayer.team === game.activeTeam;
 
   const roundDuration =
     lobbySession.lobby?.settings?.roundDurationSeconds ?? 60;
@@ -673,6 +797,7 @@ export default function GamePage() {
         <div className="relative z-10" data-testid="game-page">
           <GameOverScreen
             game={game}
+            players={lobbySession?.lobby?.players}
             reduceMotion={reduceMotion}
             onLeave={handleLeave}
           />
@@ -681,13 +806,36 @@ export default function GamePage() {
     );
   }
 
+  const syncHint =
+    isRealtimeConnected && lastStateReceivedAt
+      ? `Live · updated ${new Date(lastStateReceivedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+      : null;
+
   return (
     <div className="flex min-h-screen flex-col bg-[#0a0f1a] text-white">
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#0a0f1a] via-[#0d1220] to-[#0a0f1a]" />
       <div className="pointer-events-none fixed left-1/2 top-0 h-[400px] w-[500px] -translate-x-1/2 rounded-full bg-[#1e3a5f]/15 blur-[100px]" />
       <div className="pointer-events-none fixed bottom-0 left-1/2 h-[300px] w-[400px] -translate-x-1/2 rounded-full bg-[#b73b3b]/10 blur-[100px]" />
 
-      <motion.header
+      <GameFeedbackOverlay variant={feedbackVariant} reduceMotion={reduceMotion} />
+
+      {shouldShowReconnectBanner && (
+        <div
+          className={cn(
+            "relative z-20 border-b px-4 py-2.5 text-center text-sm",
+            connectionState === "reconnecting"
+              ? "border-amber-500/25 bg-amber-500/10 text-amber-100"
+              : "border-red-500/25 bg-red-500/10 text-red-100",
+          )}
+          role="status"
+        >
+          {connectionState === "reconnecting"
+            ? "Reconnecting… You can still see the board; actions resume when live."
+            : "Connection lost — showing last known state. Actions disabled until reconnected."}
+        </div>
+      )}
+
+      <Motion.header
         initial={reduceMotion ? false : { opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         className="relative z-10 flex items-center justify-between border-b border-white/[0.06] px-4 py-3"
@@ -702,19 +850,24 @@ export default function GamePage() {
           <span className="hidden text-sm font-medium sm:inline">Leave</span>
         </button>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-neutral-500">Round</span>
-          <span className="text-sm font-semibold text-white">
-            {game.roundNumber || 0}/{game.totalRounds || 0}
-          </span>
+        <div className="flex flex-col items-end gap-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-neutral-500">Round</span>
+            <span className="text-sm font-semibold text-white">
+              {game.roundNumber || 0}/{game.totalRounds || 0}
+            </span>
+          </div>
+          {syncHint && (
+            <span className="text-[10px] text-neutral-600">{syncHint}</span>
+          )}
         </div>
-      </motion.header>
+      </Motion.header>
 
       <main
         className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-4"
         data-testid="game-page"
       >
-        <motion.section
+        <Motion.section
           {...(reduceMotion ? {} : motionPresets.staggerSection(0))}
           className="mb-4"
         >
@@ -738,7 +891,17 @@ export default function GamePage() {
               )}
             </div>
 
-            <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 text-center">
+            <Motion.div
+              className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 text-center"
+              animate={
+                reduceMotion || normalizedStatus !== "turn_in_progress"
+                  ? {}
+                  : secondsRemaining <= 10
+                    ? feedbackMotion.timerUrgent
+                    : { filter: "brightness(1)" }
+              }
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
               {normalizedStatus === "turn_in_progress" && (
                 <div
                   className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-[#1e3a5f] to-[#3b6ca8] transition-all duration-700"
@@ -752,7 +915,7 @@ export default function GamePage() {
               <p className={cn("text-2xl font-mono font-bold", timerColor)}>
                 {secondsRemaining}
               </p>
-            </div>
+            </Motion.div>
 
             <div
               className={cn(
@@ -778,9 +941,9 @@ export default function GamePage() {
               )}
             </div>
           </div>
-        </motion.section>
+        </Motion.section>
 
-        <motion.div
+        <Motion.div
           {...(reduceMotion ? {} : motionPresets.staggerSection(0.05))}
           className="mb-4 flex justify-center"
         >
@@ -795,7 +958,7 @@ export default function GamePage() {
             <Users className="h-3.5 w-3.5" />
             Team {activeTeamColors.label}&apos;s Turn
           </div>
-        </motion.div>
+        </Motion.div>
 
         <div className="mb-3 flex justify-center">
           <RoleBadge viewerRole={game.viewerRole || "spectator"} />
@@ -808,6 +971,10 @@ export default function GamePage() {
               canRequestReview,
               canVoteReview,
               canContinueAfterReview,
+              roleCanRequestReview,
+              roleCanVoteReview,
+              roleCanContinueAfterReview,
+              isRealtimeConnected,
             }}
             onRequestReview={handleRequestReview}
             onVote={handleReviewVote}
@@ -817,7 +984,7 @@ export default function GamePage() {
         )}
 
         {normalizedStatus !== "turn_in_progress" && (
-          <motion.section
+          <Motion.section
             {...(reduceMotion ? {} : motionPresets.staggerSection(0.1))}
             className="mb-4"
           >
@@ -826,18 +993,19 @@ export default function GamePage() {
               canStartTurn={canStartTurn}
               onStartTurn={() => handleGameAction("start_turn")}
               countdown={secondsRemaining}
+              startTurnDisabled={!isRealtimeConnected && roleCanStartTurn}
             />
-          </motion.section>
+          </Motion.section>
         )}
 
         {normalizedStatus === "turn_in_progress" && !reviewPaused && (
           <>
-            <motion.section
+            <Motion.section
               {...(reduceMotion ? {} : motionPresets.staggerSection(0.1))}
               className="mb-4 flex-1"
             >
               <AnimatePresence mode="wait">
-                <motion.div
+                <Motion.div
                   key={game.currentCard?.id || "hidden"}
                   {...(reduceMotion ? {} : motionPresets.cardSwap)}
                   className="flex h-full min-h-[280px] flex-col rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5 sm:p-6"
@@ -863,7 +1031,7 @@ export default function GamePage() {
                         </p>
                         <div className="flex flex-wrap items-center justify-center gap-1.5">
                           {(game.currentCard.taboo || []).map((word, index) => (
-                            <motion.span
+                            <Motion.span
                               key={word}
                               {...(reduceMotion
                                 ? {}
@@ -871,7 +1039,7 @@ export default function GamePage() {
                               className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-300"
                             >
                               {word}
-                            </motion.span>
+                            </Motion.span>
                           ))}
                         </div>
                       </div>
@@ -886,18 +1054,19 @@ export default function GamePage() {
                       </p>
                     </div>
                   )}
-                </motion.div>
+                </Motion.div>
               </AnimatePresence>
-            </motion.section>
+            </Motion.section>
 
-            <motion.section
+            <Motion.section
               {...(reduceMotion ? {} : motionPresets.staggerSection(0.2))}
             >
-              {canSubmitGuess && (
+              {roleCanSubmitGuess && (
                 <div className="mb-3 flex gap-2">
                   <input
                     type="text"
                     value={guessText}
+                    disabled={!isRealtimeConnected}
                     onChange={(event) => setGuessText(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -905,43 +1074,52 @@ export default function GamePage() {
                         submitGuess();
                       }
                     }}
-                    placeholder="Type your guess..."
-                    className="h-11 flex-1 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[#3b6ca8]/60"
+                    placeholder={
+                      isRealtimeConnected
+                        ? "Type your guess..."
+                        : "Reconnecting…"
+                    }
+                    className="h-11 flex-1 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-[#3b6ca8]/60 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="Type guess"
                   />
                   <button
                     type="button"
                     onClick={submitGuess}
-                    className="h-11 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/30"
+                    disabled={!isRealtimeConnected}
+                    className="h-11 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Guess
                   </button>
                 </div>
               )}
 
-              {canSkipCard && (
+              {roleCanSkipCard && (
                 <button
                   type="button"
                   onClick={() => handleGameAction("skip_card")}
-                  className="w-full rounded-xl border-2 border-amber-500/30 bg-amber-500/20 p-4 font-semibold text-amber-400 transition-all hover:bg-amber-500/30"
+                  disabled={!isRealtimeConnected}
+                  className="w-full rounded-xl border-2 border-amber-500/30 bg-amber-500/20 p-4 font-semibold text-amber-400 transition-all hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <SkipForward className="mx-auto mb-1 h-6 w-6" />
                   <span className="block text-xs">Skip Card</span>
                 </button>
               )}
 
-              {canCallTaboo && (
+              {roleCanCallTaboo && (
                 <button
                   type="button"
                   onClick={() => handleGameAction("taboo_called")}
-                  className="w-full rounded-xl border-2 border-red-500/30 bg-red-500/20 p-4 font-semibold text-red-400 transition-all hover:bg-red-500/30"
+                  disabled={!isRealtimeConnected}
+                  className="w-full rounded-xl border-2 border-red-500/30 bg-red-500/20 p-4 font-semibold text-red-400 transition-all hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <AlertTriangle className="mx-auto mb-1 h-6 w-6" />
                   <span className="block text-xs">Call Taboo!</span>
                 </button>
               )}
 
-              {!canSkipCard && !canCallTaboo && !canSubmitGuess && (
+              {!roleCanSkipCard &&
+                !roleCanCallTaboo &&
+                !roleCanSubmitGuess && (
                 <p className="mt-3 text-center text-xs text-neutral-500">
                   Watching the current turn...
                 </p>
@@ -951,7 +1129,7 @@ export default function GamePage() {
                 history={game.history}
                 reduceMotion={reduceMotion}
               />
-            </motion.section>
+            </Motion.section>
           </>
         )}
       </main>

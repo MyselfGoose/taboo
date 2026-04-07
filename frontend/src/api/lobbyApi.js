@@ -1,11 +1,24 @@
 const FALLBACK_API_BASE_URL = "http://127.0.0.1:3000";
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD &&
-  typeof window !== "undefined" &&
-  window.location?.origin
-    ? window.location.origin
-    : FALLBACK_API_BASE_URL);
+
+function resolveApiBaseUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  // Dev + browser: same origin so Vite proxies /api and avoids CORS (localhost vs 127.0.0.1).
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  if (
+    import.meta.env.PROD &&
+    typeof window !== "undefined" &&
+    window.location?.origin
+  ) {
+    return window.location.origin;
+  }
+  return FALLBACK_API_BASE_URL;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const CATEGORY_CACHE_TTL_MS = 30 * 1000;
 let categoriesCache = null;
@@ -184,5 +197,42 @@ export async function restoreSession({ code, resumeToken }) {
 }
 
 export function getLobbyWebSocketUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return `${toWebSocketBaseUrl(import.meta.env.VITE_API_BASE_URL)}/ws`;
+  }
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    const { protocol, host } = window.location;
+    const wsProto = protocol === "https:" ? "wss" : "ws";
+    return `${wsProto}://${host}/ws`;
+  }
   return `${toWebSocketBaseUrl(API_BASE_URL)}/ws`;
+}
+
+export async function getRecentMatches({ limit = 10 } = {}) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/matches/recent?limit=${encodeURIComponent(limit)}`,
+  );
+  const payload = await parseApiResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      toErrorMessage(response.status, payload, "Could not load recent matches"),
+    );
+  }
+  return payload?.matches ?? [];
+}
+
+export async function getLeaderboard({ limit = 20 } = {}) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/leaderboard?limit=${encodeURIComponent(limit)}`,
+  );
+  const payload = await parseApiResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      toErrorMessage(response.status, payload, "Could not load leaderboard"),
+    );
+  }
+  return {
+    highScores: payload?.highScores ?? [],
+    topPlayers: payload?.topPlayers ?? [],
+  };
 }

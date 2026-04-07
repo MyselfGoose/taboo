@@ -41,10 +41,12 @@ Options:
 Environment variables:
   BACKEND_PORT       Overrides backend port detection
   FRONTEND_PORT      Frontend dev server port (default: 5173)
+  TABOO_AUTO_RECLAIM_BACKEND_PORT  Set to 0 to skip freeing a busy backend port (default: 1)
 
 Notes:
   - Backend port is loaded from BACKEND_PORT, then backend/.env PORT, then defaults to 3000.
-  - Script exits if required ports are busy unless --kill-existing is provided.
+  - By default, stale listeners on the backend port are cleared so ./start.sh recovers after a crash.
+  - Use --kill-existing to also clear the frontend port, or set TABOO_AUTO_RECLAIM_BACKEND_PORT=0 to disable backend reclaim.
 EOF
 }
 
@@ -342,7 +344,23 @@ main() {
   ensure_valid_port "FRONTEND_PORT" "$FRONTEND_PORT"
 
   if [[ "$RUN_BACKEND" == true ]]; then
-    ensure_port_available "$backend_port" "Backend"
+    if [[ "$KILL_EXISTING" == true ]]; then
+      ensure_port_available "$backend_port" "Backend"
+    elif [[ "${TABOO_AUTO_RECLAIM_BACKEND_PORT:-1}" == "1" ]]; then
+      local busy
+      busy="$(find_listening_pids "$backend_port")"
+      if [[ -n "$busy" ]]; then
+        log_warn "Freeing backend port $backend_port (stale PID(s): $busy). Set TABOO_AUTO_RECLAIM_BACKEND_PORT=0 to disable."
+        kill_pids_on_port "$backend_port"
+      fi
+      busy="$(find_listening_pids "$backend_port")"
+      if [[ -n "$busy" ]]; then
+        log_error "Backend port $backend_port is still in use by PID(s): $busy. Try --kill-existing or stop that process."
+        exit 1
+      fi
+    else
+      ensure_port_available "$backend_port" "Backend"
+    fi
     ensure_dependencies "$BACKEND_DIR" "backend"
   fi
 

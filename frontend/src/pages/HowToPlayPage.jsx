@@ -252,7 +252,7 @@ function ReviewMock({ card }) {
             Opponent called Taboo
           </p>
           <p className="text-xs text-neutral-500">
-            Vote: 80% not fair reverses the penalty
+            Only the penalized team votes; majority not fair reverses −1
           </p>
         </div>
         <StatusPill variant="warning">Voting</StatusPill>
@@ -294,20 +294,12 @@ function ReviewMock({ card }) {
 
       <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-neutral-300">
         <div className="flex items-center justify-between">
-          <span>Alex</span>
+          <span>Alex (penalized team)</span>
           <span className="text-emerald-300">fair</span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Sam</span>
+          <span>Sam (penalized team)</span>
           <span className="text-red-300">not fair</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span>Priya</span>
-          <span className="text-red-300">not fair</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span>Leo</span>
-          <span className="text-neutral-400">pending</span>
         </div>
       </div>
     </Card>
@@ -497,8 +489,9 @@ export default function HowToPlayPage() {
               <CardTitle>Taboo Review</CardTitle>
               <p className="mt-2 text-sm text-neutral-400">
                 Opponents can call Taboo once per card. The timer pauses while
-                everyone votes. If at least 80% vote “Not Fair,” the penalty is
-                reversed and the turn continues with the remaining time.
+                the penalized team votes. If more teammates vote “Not Fair” than
+                “Fair,” the penalty is reversed and the turn continues with the
+                remaining time. Ties keep the penalty.
               </p>
               <div className="mt-4 grid gap-3">
                 <div className="flex items-center gap-3 text-sm text-neutral-300">
@@ -507,7 +500,7 @@ export default function HowToPlayPage() {
                 </div>
                 <div className="flex items-center gap-3 text-sm text-neutral-300">
                   <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                  80% “Not Fair” reverses the penalty.
+                  Majority “Not Fair” on the penalized team reverses the penalty.
                 </div>
                 <div className="flex items-center gap-3 text-sm text-neutral-300">
                   <Play className="h-4 w-4 text-neutral-400" />

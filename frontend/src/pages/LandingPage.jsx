@@ -176,7 +176,13 @@ export default function LandingPage() {
         className="relative z-10 flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8 max-w-md mx-auto w-full"
         data-testid="landing-page"
       >
-        <div className="flex justify-end mb-3">
+        <div className="mb-3 flex justify-end gap-2">
+          <Link
+            to="/leaderboard"
+            className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-neutral-300 transition hover:bg-white/[0.08] hover:text-white"
+          >
+            Stats
+          </Link>
           <Link
             to="/how-to-play"
             className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-neutral-300 transition hover:bg-white/[0.08] hover:text-white"

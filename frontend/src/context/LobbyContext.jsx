@@ -12,6 +12,7 @@ export function LobbyProvider({ children }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [restoreState, setRestoreState] = useState("restoring");
   const [restoreError, setRestoreError] = useState("");
+  const [lastStateReceivedAt, setLastStateReceivedAt] = useState(null);
   const [tabTag] = useState(() => getOrCreateTabTag());
 
   // Socket plumbing refs – never trigger re-renders.
@@ -311,6 +312,7 @@ export function LobbyProvider({ children }) {
           // Handshake complete – mark as connected.
           isSubscribingRef.current = false;
           setConnectionState("connected");
+          setLastStateReceivedAt(Date.now());
           setLobbySessionState((current) => {
             if (!current) {
               return current;
@@ -324,6 +326,7 @@ export function LobbyProvider({ children }) {
         }
 
         if (message.type === "lobby_state") {
+          setLastStateReceivedAt(Date.now());
           setLobbySessionState((current) => {
             if (!current) {
               return current;
@@ -487,6 +490,7 @@ export function LobbyProvider({ children }) {
     setRestoreError("");
     setConnectionState("disconnected");
     setErrorMessage("");
+    setLastStateReceivedAt(null);
   };
 
   // ─── Context value ────────────────────────────────────────────────────────
@@ -504,6 +508,7 @@ export function LobbyProvider({ children }) {
       restoreState,
       restoreError,
       setRestoreError,
+      lastStateReceivedAt,
     }),
     [
       lobbySession,
@@ -512,6 +517,7 @@ export function LobbyProvider({ children }) {
       tabTag,
       restoreState,
       restoreError,
+      lastStateReceivedAt,
     ],
   );
 

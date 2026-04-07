@@ -93,6 +93,35 @@ function createLobbyController({ lobbyService }) {
         return next(error);
       }
     },
+
+    recentMatches(req, res, next) {
+      try {
+        const limit = Math.min(
+          50,
+          Math.max(1, Number(req.query.limit) || 10),
+        );
+        const matches = lobbyService.listRecentMatches({ limit });
+        return res.status(200).json({ matches });
+      } catch (error) {
+        return next(error);
+      }
+    },
+
+    leaderboard(req, res, next) {
+      try {
+        const limit = Math.min(
+          50,
+          Math.max(1, Number(req.query.limit) || 20),
+        );
+        const highScores = lobbyService.listLeaderboardHighScores({ limit });
+        const topPlayers = lobbyService.listTopPlayersByCorrect({
+          limit: Math.min(25, limit),
+        });
+        return res.status(200).json({ highScores, topPlayers });
+      } catch (error) {
+        return next(error);
+      }
+    },
   };
 }
 

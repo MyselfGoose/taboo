@@ -180,7 +180,7 @@ describe("App routed lobby flow", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:3000/api/lobbies",
+      expect.stringMatching(/\/api\/lobbies$/),
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({

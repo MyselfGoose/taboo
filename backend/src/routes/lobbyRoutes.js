@@ -8,6 +8,8 @@ function createLobbyRouter({ lobbyController }) {
   router.post("/sessions/restore", lobbyController.restoreSession);
   router.get("/categories", lobbyController.categories);
   router.get("/lobbies/:code", lobbyController.getByCode);
+  router.get("/matches/recent", lobbyController.recentMatches);
+  router.get("/leaderboard", lobbyController.leaderboard);
 
   return router;
 }

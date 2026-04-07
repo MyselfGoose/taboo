@@ -1,21 +1,62 @@
+const http = require("node:http");
+
 const { createApp, config, logger } = require("./app");
 const { createLobbyRealtimeHub } = require("./realtime/lobbyRealtimeHub");
 
-function createNetworkServer(app) {
-  const server = app.listen(config.port, () => {
+function resolveListenHost() {
+  if (process.env.HOST !== undefined) {
+    return process.env.HOST === "" ? undefined : process.env.HOST;
+  }
+  return config.isProduction ? undefined : "127.0.0.1";
+}
+
+function startServer() {
+  const app = createApp();
+  const server = http.createServer(app);
+  const listenHost = resolveListenHost();
+
+  server.on("error", (error) => {
+    if (error.code === "EADDRINUSE") {
+      logger.error(
+        `Port ${config.port} is already in use. Stop the other process (e.g. lsof -i :${config.port}) or set PORT to a free port.`,
+        {
+          event: "listen_eaddrinuse",
+          port: config.port,
+          host: listenHost,
+        },
+      );
+    } else {
+      logger.error("HTTP server error", {
+        event: "listen_error",
+        message: error.message,
+        code: error.code,
+      });
+    }
+    process.exit(1);
+  });
+
+  const realtimeHub = createLobbyRealtimeHub({
+    server,
+    lobbyService: app.locals.lobbyService,
+    logger,
+    config,
+  });
+
+  server.listen(config.port, listenHost, () => {
+    const addr = server.address();
     logger.info("HTTP server listening", {
       event: "server_started",
       protocol: "http",
-      port: config.port,
+      port: typeof addr === "object" && addr ? addr.port : config.port,
+      host: typeof addr === "object" && addr ? addr.address : listenHost,
     });
   });
 
-  return server;
-}
-
-function configureTimeouts(server) {
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;
+
+  setupGracefulShutdown(server, realtimeHub, app.locals.sqliteDatabase);
+  return { app, server, realtimeHub };
 }
 
 function setupGracefulShutdown(server, realtimeHub, sqliteDatabase) {
@@ -59,19 +100,6 @@ function setupGracefulShutdown(server, realtimeHub, sqliteDatabase) {
 
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
-}
-
-function startServer() {
-  const app = createApp();
-  const server = createNetworkServer(app);
-  const realtimeHub = createLobbyRealtimeHub({
-    server,
-    lobbyService: app.locals.lobbyService,
-    logger,
-  });
-  configureTimeouts(server);
-  setupGracefulShutdown(server, realtimeHub, app.locals.sqliteDatabase);
-  return { app, server, realtimeHub };
 }
 
 module.exports = {

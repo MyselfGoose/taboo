@@ -28,13 +28,13 @@ const { errorHandler } = require("./middleware/errorHandler");
 const { notFoundMiddleware } = require("./middleware/notFound");
 const { createHealthRouter } = require("./routes/healthRoutes");
 const { createLobbyRouter } = require("./routes/lobbyRoutes");
+const {
+  MatchHistoryRepository,
+} = require("./repositories/matchHistoryRepository");
 
 function createCorsOptions() {
   return {
     origin(origin, callback) {
-      console.log("Incoming origin:", origin);
-      console.log("Allowed origins:", config.allowedOrigins);
-
       if (!origin) return callback(null, true);
 
       if (!config.isProduction) return callback(null, true);
@@ -47,7 +47,6 @@ function createCorsOptions() {
         return callback(null, true);
       }
 
-      console.log("❌ BLOCKED BY CORS:", origin);
       return callback(null, false);
     },
     methods: ["GET", "POST", "OPTIONS"], // ✅ this line must be inside the returned object
@@ -85,6 +84,9 @@ function createApp() {
 
   const { lobbyRepository, sessionRepository, sqliteDatabase } =
     createRepositories();
+  const matchHistoryRepository = sqliteDatabase
+    ? new MatchHistoryRepository({ db: sqliteDatabase })
+    : null;
   const datasetService = new DatasetService({ config, logger });
   const lobbyService = new LobbyService({
     repository: lobbyRepository,
@@ -92,6 +94,7 @@ function createApp() {
     datasetService,
     logger,
     config,
+    matchHistoryRepository,
   });
 
   const lobbyController = createLobbyController({ lobbyService });
